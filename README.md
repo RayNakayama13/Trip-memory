@@ -46,14 +46,21 @@ iPhone などで撮った写真に埋め込まれている EXIF（撮影日時�
 
 ## 公開する（GitHub Pages）
 
-`main` ブランチに push すると、GitHub Actions が自動でビルドして GitHub Pages に公開します
-（`.github/workflows/deploy.yml`）。リポジトリ側で Pages が未設定でも、この workflow が有効化します。
+push すると GitHub Actions が自動でビルドして GitHub Pages に公開します
+（`.github/workflows/deploy.yml`）。
+
+**最初に 1 回だけ、GitHub の画面で Pages を有効にしてください。**
+リポジトリの **Settings > Pages > Build and deployment > Source** を **「GitHub Actions」** に変更します。
+（Pages の有効化は管理者権限が必要な操作で、Actions のトークンからは行えません。）
+
+対象ブランチは `main` と `claude/travel-memory-photo-service-ty988y` です。
+ブランチを整理したときは、`deploy.yml` の `on.push.branches` を実際のデフォルトブランチに合わせてください
+（GitHub Pages は既定でデフォルトブランチからのデプロイのみを許可します）。
 
 公開先は `https://<ユーザー名>.github.io/<リポジトリ名>/` です。
 サブパス配信に合わせて `BASE_PATH` を自動で渡しているため、追加の設定は要りません。
 
-初回だけ、リポジトリの **Settings > Actions > General > Workflow permissions** が
-「Read and write permissions」になっているか確認してください。
+設定後は Actions タブから workflow を再実行すれば公開されます。
 
 ## 使い方（ローカル）
 

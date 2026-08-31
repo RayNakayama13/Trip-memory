@@ -37,11 +37,10 @@ jobs:
           BASE_PATH: /${{ github.event.repository.name }}/
         run: npm run build
 
+      # 事前に Settings > Pages の Source を "GitHub Actions" にしておく必要がある
+      # （Pages の有効化は管理者権限が要る操作で、Actions のトークンでは行えない）
       - name: Configure Pages
         uses: actions/configure-pages@v5
-        with:
-          # リポジトリで Pages が未設定でも、この workflow から有効化する
-          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
