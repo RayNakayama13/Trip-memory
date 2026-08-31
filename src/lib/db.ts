@@ -100,6 +100,21 @@ export async function saveSettings(settings: Settings): Promise<void> {
   await (await db()).put('meta', settings, 'settings');
 }
 
+/**
+ * 保存領域を「消さないでほしい」ものとしてブラウザに登録する。
+ * iOS Safari はしばらく使っていないサイトのデータを消すことがあるため、取り込み時に一度呼ぶ。
+ * 許可されるかはブラウザ次第なので、結果は目安として扱う。
+ */
+export async function requestPersistentStorage(): Promise<boolean> {
+  if (!navigator.storage?.persist) return false;
+  try {
+    if (await navigator.storage.persisted?.()) return true;
+    return await navigator.storage.persist();
+  } catch {
+    return false;
+  }
+}
+
 /** 保存容量の目安（ブラウザが対応している場合のみ） */
 export async function storageEstimate(): Promise<{ usage: number; quota: number } | null> {
   if (!navigator.storage?.estimate) return null;

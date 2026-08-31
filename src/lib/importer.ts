@@ -1,6 +1,6 @@
 import type { Photo } from './types';
 import { readExif } from './exif';
-import { contentHash, resize } from './image';
+import { contentHash, decode, fromBitmap, resize, type Decoded } from './image';
 import { photoExists, putPhoto } from './db';
 
 /** 表示用画像とサムネイルの長辺（px） */
@@ -24,15 +24,15 @@ function looksHeic(file: File): boolean {
 }
 
 /** iPhone の HEIC は多くのブラウザが直接デコードできないため、必要になったときだけ変換器を読み込む。 */
-async function decodeHeic(file: File): Promise<ImageBitmap> {
+async function decodeHeic(file: File): Promise<Decoded> {
   const { heicTo } = await import('heic-to');
-  return heicTo({ blob: file, type: 'bitmap', options: { imageOrientation: 'from-image' } });
+  return fromBitmap(await heicTo({ blob: file, type: 'bitmap' }));
 }
 
-async function decodeAny(file: File): Promise<ImageBitmap> {
+async function decodeAny(file: File): Promise<Decoded> {
   if (looksHeic(file)) return decodeHeic(file);
   try {
-    return await createImageBitmap(file, { imageOrientation: 'from-image' });
+    return await decode(file);
   } catch (error) {
     // 拡張子も MIME も当てにならない場合があるので、最後に HEIC として読み直す
     try {
@@ -77,11 +77,15 @@ export async function importFiles(
       if (await photoExists(id)) {
         progress.skipped += 1;
       } else {
-        const [exif, bitmap] = await Promise.all([readExif(file), decodeAny(file)]);
-        const [full, thumb] = await Promise.all([
-          resize(bitmap, FULL_EDGE, 0.82),
-          resize(bitmap, THUMB_EDGE, 0.7),
-        ]);
+        const [exif, image] = await Promise.all([readExif(file), decodeAny(file)]);
+        let full: Blob;
+        let thumb: Blob;
+        try {
+          full = await resize(image, FULL_EDGE, 0.82);
+          thumb = await resize(image, THUMB_EDGE, 0.7);
+        } finally {
+          image.release();
+        }
         const photo: Photo = {
           id,
           fileName: file.name,
@@ -90,14 +94,13 @@ export async function importFiles(
           lat: exif.lat,
           lon: exif.lon,
           heading: exif.heading,
-          width: bitmap.width,
-          height: bitmap.height,
+          width: image.width,
+          height: image.height,
           full,
           thumb,
           cameraModel: exif.cameraModel,
           createdAt: Date.now(),
         };
-        bitmap.close();
         await putPhoto(photo);
         progress.added += 1;
       }

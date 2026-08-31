@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Photo } from '../lib/types';
 import { photoUrl } from '../lib/media';
 import { formatDateTime } from '../lib/format';
@@ -22,6 +22,7 @@ export function Lightbox({
   caption,
 }: Props): JSX.Element | null {
   const photo = photos[index];
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const move = useCallback(
     (delta: number) => {
@@ -76,7 +77,23 @@ export function Lightbox({
         </button>
       </div>
 
-      <div className="lightbox__stage">
+      <div
+        className="lightbox__stage"
+        onTouchStart={(e) => {
+          const touch = e.touches[0];
+          touchStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+        }}
+        onTouchEnd={(e) => {
+          const start = touchStartRef.current;
+          const touch = e.changedTouches[0];
+          touchStartRef.current = null;
+          if (!start || !touch) return;
+          const dx = touch.clientX - start.x;
+          const dy = touch.clientY - start.y;
+          // 横方向にはっきり動いたときだけ写真を送る（縦スワイプは無視）
+          if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) move(dx < 0 ? 1 : -1);
+        }}
+      >
         <img src={photoUrl(photo, 'full')} alt={photo.fileName} />
         {index > 0 && (
           <button

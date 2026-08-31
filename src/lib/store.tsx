@@ -109,6 +109,8 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
 
   const addFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) return null;
+    // 端末に写真を貯めるので、消されにくい保存領域を一度だけ要求しておく
+    void db.requestPersistentStorage();
     const result = await importFiles(files, setImporting);
     setPhotos(await db.allPhotos());
     setImporting(null);

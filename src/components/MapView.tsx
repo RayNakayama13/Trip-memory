@@ -43,9 +43,14 @@ export function MapView({
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current, {
+    const container = containerRef.current;
+    const touchDevice = window.matchMedia('(pointer: coarse)').matches;
+
+    const map = L.map(container, {
       zoomControl: true,
       scrollWheelZoom: false,
+      // スマートフォンでは 1 本指をページのスクロールに残し、2 本指で地図を動かす
+      dragging: !touchDevice,
       attributionControl: true,
     });
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -57,7 +62,14 @@ export function MapView({
     map.on('mouseout', () => map.scrollWheelZoom.disable());
     mapRef.current = map;
 
+    const onTouchStart = (e: TouchEvent): void => {
+      if (e.touches.length > 1) map.dragging.enable();
+      else map.dragging.disable();
+    };
+    if (touchDevice) container.addEventListener('touchstart', onTouchStart, { passive: true });
+
     return () => {
+      if (touchDevice) container.removeEventListener('touchstart', onTouchStart);
       map.remove();
       mapRef.current = null;
       markersRef.current.clear();

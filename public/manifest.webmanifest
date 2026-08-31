@@ -1,0 +1,17 @@
+{
+  "name": "Trip Memory｜旅の思い出アルバム",
+  "short_name": "Trip Memory",
+  "description": "写真をアップロードするだけで、いつ・どこで・何をしていたかを地図と時系列で振り返れる旅のアルバム。",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f1115",
+  "theme_color": "#0f1115",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

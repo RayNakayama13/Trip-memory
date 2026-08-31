@@ -26,6 +26,12 @@
 
   --header-height: 60px;
   --max-width: 1080px;
+
+  /* iPhone のノッチ・ホームインジケーターを避けるための余白 */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 * {
@@ -41,12 +47,16 @@ body {
 body {
   background: var(--bg);
   color: var(--text);
+  /* ホーム画面から起動したときに、画面を左右に引っ張っても背景が破綻しないようにする */
+  overscroll-behavior-y: none;
   font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', -apple-system,
     BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 15px;
   line-height: 1.7;
   -webkit-font-smoothing: antialiased;
   overflow-wrap: anywhere;
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
 }
 
 h1,
@@ -66,6 +76,7 @@ button {
   font: inherit;
   color: inherit;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 a {
@@ -194,7 +205,8 @@ img {
   position: sticky;
   top: 0;
   z-index: 500;
-  height: var(--header-height);
+  height: calc(var(--header-height) + var(--safe-top));
+  padding-top: var(--safe-top);
   display: flex;
   align-items: center;
   background: rgba(15, 17, 21, 0.82);
@@ -499,7 +511,7 @@ img {
   align-items: baseline;
   gap: 10px;
   position: sticky;
-  top: var(--header-height);
+  top: calc(var(--header-height) + var(--safe-top));
   z-index: 300;
   padding: 10px 0;
   background: linear-gradient(var(--bg) 70%, rgba(15, 17, 21, 0));
@@ -642,6 +654,9 @@ img {
   border-radius: var(--radius-sm);
   padding: 8px 12px;
   font: inherit;
+  /* iOS は 16px 未満の入力欄にフォーカスすると画面を拡大してしまうので、
+     font: inherit のあとで下限を効かせる */
+  font-size: max(16px, 1em);
 }
 
 .textarea {
@@ -674,7 +689,7 @@ img {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
+  padding: calc(12px + var(--safe-top)) 16px 12px;
   color: var(--text-muted);
   font-size: 13px;
 }
@@ -717,7 +732,7 @@ img {
 }
 
 .lightbox__caption {
-  padding: 10px 16px 20px;
+  padding: 10px 16px calc(20px + var(--safe-bottom));
   text-align: center;
   font-size: 13px;
   color: var(--text-muted);
@@ -837,7 +852,7 @@ img {
 
 .footer {
   margin-top: auto;
-  padding: 34px 0 40px;
+  padding: 34px 0 calc(40px + var(--safe-bottom));
   color: var(--text-faint);
   font-size: 12.5px;
   text-align: center;
@@ -864,11 +879,46 @@ img {
   }
 
   .map {
-    height: 300px;
+    height: 320px;
   }
 
   .photo-grid {
     grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  }
+
+  /* 指で押しやすい高さを確保する */
+  .btn {
+    padding: 11px 18px;
+  }
+
+  .trip-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dropzone {
+    padding: 28px 16px;
+  }
+
+  .spot__head {
+    gap: 6px 10px;
+  }
+
+  .lightbox__nav {
+    width: 52px;
+    height: 52px;
+  }
+
+  .timeline {
+    padding-left: 22px;
+  }
+}
+
+/* 指で操作する端末では、地図は 2 本指で動かす（1 本指はページのスクロールに残す）。
+   Leaflet 自身が .leaflet-container に touch-action: none を当てるため、
+   同じ強さになるようクラスを 2 つ重ねて上書きする。 */
+@media (pointer: coarse) {
+  .map.leaflet-container {
+    touch-action: pan-y;
   }
 }
 
