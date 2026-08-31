@@ -7,3 +7,7 @@ dist-ssr
 
 # TypeScript のビルド情報（生成物）
 *.tsbuildinfo
+
+# ローカルの環境変数（共有機能の接続先など）
+.env
+.env.local

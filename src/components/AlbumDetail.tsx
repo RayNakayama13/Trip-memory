@@ -9,6 +9,7 @@ import { Timeline } from './Timeline';
 import { Lightbox } from './Lightbox';
 import { Uploader } from './Uploader';
 import { AlbumPicker } from './AlbumPicker';
+import { SharePanel } from './SharePanel';
 
 interface Props {
   view: AlbumView;
@@ -211,7 +212,13 @@ export function AlbumDetail({ view, onBack }: Props): JSX.Element {
         </>
       )}
 
-      <div style={{ margin: '36px 0 10px' }}>
+      {!unsorted && (
+        <div style={{ marginTop: 32 }}>
+          <SharePanel album={album} />
+        </div>
+      )}
+
+      <div style={{ margin: '28px 0 10px' }}>
         <Uploader compact albumId={unsorted ? undefined : album.id} />
         {!unsorted && (
           <p className="faint" style={{ marginTop: 8, textAlign: 'center' }}>

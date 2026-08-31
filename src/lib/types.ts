@@ -36,6 +36,8 @@ export interface Photo {
   thumb: Blob;
   cameraModel?: string;
   createdAt: number;
+  /** 共有アルバムの場合、この写真がサーバーに上がっているか */
+  uploaded?: boolean;
 }
 
 /** ひとつの旅のアルバム。写真をまとめる入れ物で、利用者が作って名前を付ける。 */
@@ -48,6 +50,17 @@ export interface Album {
   coverPhotoId: string | null;
   createdAt: number;
   updatedAt: number;
+
+  /* --- 共有しているアルバムだけが持つ情報 --- */
+  /** サーバー側のアルバム ID。null なら共有していない（この端末だけのアルバム） */
+  remoteId?: string | null;
+  /** 招待リンクに載せる合言葉 */
+  inviteToken?: string | null;
+  /** 自分が作ったのか、招待されて参加したのか */
+  shareRole?: 'owner' | 'member' | null;
+  lastSyncedAt?: number | null;
+  /** 最後に同期したときの参加人数 */
+  memberCount?: number | null;
 }
 
 /** 同じ場所・近い時刻でまとまった写真のかたまり（＝立ち寄りスポット） */

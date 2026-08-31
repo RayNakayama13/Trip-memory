@@ -37,8 +37,8 @@ export function AlbumList({ onOpenAlbum }: Props): JSX.Element {
             <div className="step__num">STEP 1</div>
             <h3 className="step__title">写真をまとめて入れる</h3>
             <p className="faint">
-              iPhone の HEIC もそのまま。写真はこの端末のブラウザ内にだけ保存され、
-              どこにもアップロードされません。
+              iPhone の HEIC もそのまま。写真はこの端末のブラウザ内に保存され、
+              共有しない限りどこにもアップロードされません。
             </p>
           </div>
           <div className="step">
@@ -128,6 +128,11 @@ function AlbumCard({ view, coverUrl, onOpen }: CardProps): JSX.Element {
           {view.startAt > 0 && ` ・ ${days}日間`}
         </div>
         <div className="trip-card__chips">
+          {view.album.remoteId && (
+            <span className="tag">
+              共有中{view.album.memberCount ? ` ${view.album.memberCount}人` : ''}
+            </span>
+          )}
           <span className="tag tag--quiet">写真 {view.photoIds.length} 枚</span>
           {view.spots.length > 0 && (
             <span className="tag tag--quiet">立ち寄り {view.spots.length} か所</span>

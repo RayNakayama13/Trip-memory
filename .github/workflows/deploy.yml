@@ -31,10 +31,15 @@ jobs:
       - run: npm ci
 
       - name: Build
-        # プロジェクトページは https://<user>.github.io/<repo>/ に置かれるため、
-        # そのサブパスを base に指定してビルドする
         env:
+          # プロジェクトページは https://<user>.github.io/<repo>/ に置かれるため、
+          # そのサブパスを base に指定してビルドする
           BASE_PATH: /${{ github.event.repository.name }}/
+          # 共有アルバムの接続先。未設定でもビルドは通り、共有機能だけが無効になる。
+          # anon key はブラウザに配る前提の公開鍵で、実際の保護は schema.sql の
+          # 行レベルセキュリティが行う。
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
 
       # 事前に Settings > Pages の Source を "GitHub Actions" にしておく必要がある

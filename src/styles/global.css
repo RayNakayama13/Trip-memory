@@ -504,6 +504,62 @@ img {
   color: var(--text-muted);
 }
 
+/* ---------- 共有パネル ---------- */
+
+.share {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  display: grid;
+  gap: 12px;
+}
+
+.share--off {
+  opacity: 0.75;
+}
+
+.share__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.share__title {
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.share__link {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.share__link .input {
+  flex: 1;
+  min-width: 200px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.share__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.share__message {
+  font-size: 13px;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.share__error {
+  font-size: 13px;
+  color: var(--danger);
+}
+
 /* ---------- 削除の確認 ---------- */
 
 .danger-panel {

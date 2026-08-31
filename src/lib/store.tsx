@@ -15,6 +15,9 @@ import { assignToAlbums, attachPlaces, buildAlbumView, type AlbumRange } from '.
 import { placeKey, reverseGeocode } from './geocode';
 import { importFiles, type ImportProgress } from './importer';
 import { releasePhotoUrls } from './media';
+import { sharingConfigured } from './supabase';
+import * as sharing from './sharing';
+import type { SyncProgress, SyncResult } from './sharing';
 
 /** どのアルバムにも入っていない写真をまとめて見せるための、実体のないアルバム */
 export const UNSORTED_ID = '__unsorted__';
@@ -42,12 +45,32 @@ interface LibraryState {
   saveSpotEdit: (spotId: string, patch: { title?: string; note?: string }) => Promise<void>;
   spotTitleOf: (spotId: string, fallback: string) => string;
   spotNoteOf: (spotId: string) => string;
+
+  /* --- 共有 --- */
+  /** 共有機能の接続先が設定されているか */
+  sharingConfigured: boolean;
+  /** 同期中のアルバムと進み具合 */
+  syncing: { albumId: string; progress: SyncProgress } | null;
+  /** アルバムを共有し、招待リンクを返す */
+  shareAlbum: (albumId: string) => Promise<string>;
+  syncAlbum: (albumId: string) => Promise<SyncResult>;
+  /** 招待リンクの合言葉で参加し、手元のアルバム ID を返す */
+  joinAlbum: (token: string) => Promise<string>;
+  stopSharing: (albumId: string) => Promise<void>;
+  /** 招待リンクの URL を組み立てる */
+  inviteLink: (album: Album) => string;
 }
 
 const LibraryContext = createContext<LibraryState | null>(null);
 
 function newId(): string {
   return `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** 招待リンクの URL。ハッシュに合言葉を載せるので、サーバーに残らない。 */
+export function inviteLink(album: Album): string {
+  const base = `${window.location.origin}${window.location.pathname}`;
+  return `${base}#/join/${album.inviteToken ?? ''}`;
 }
 
 function makeAlbum(title = ''): Album {
@@ -64,6 +87,7 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
   const [places, setPlaces] = useState<Map<string, Place | null>>(new Map());
   const [importing, setImporting] = useState<ImportProgress | null>(null);
   const [geocodingLeft, setGeocodingLeft] = useState(0);
+  const [syncing, setSyncing] = useState<{ albumId: string; progress: SyncProgress } | null>(null);
   /** 問い合わせ済み（または問い合わせ中）の座標キー。二重リクエストを防ぐ。 */
   const requested = useRef<Set<string>>(new Set());
   const mounted = useRef(true);
@@ -218,6 +242,100 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
     [photos, reloadPhotos],
   );
 
+  const persistAlbum = useCallback(async (album: Album) => {
+    await db.putAlbum(album);
+    setAlbums((prev) => prev.map((a) => (a.id === album.id ? album : a)));
+  }, []);
+
+  const runSync = useCallback(
+    async (album: Album): Promise<SyncResult> => {
+      const photosInAlbum = (await db.allPhotos()).filter((p) => p.albumId === album.id);
+      setSyncing({ albumId: album.id, progress: { phase: 'upload', done: 0, total: 0 } });
+      try {
+        const result = await sharing.syncAlbum(album, photosInAlbum, (progress) =>
+          setSyncing({ albumId: album.id, progress }),
+        );
+        await persistAlbum({
+          ...album,
+          // 相手が名前を変えていたら、そちらを取り込む
+          title: result.remote ? result.remote.title : album.title,
+          note: result.remote ? result.remote.note : album.note,
+          updatedAt: result.remote ? result.remote.updatedAt : album.updatedAt,
+          lastSyncedAt: Date.now(),
+          memberCount: result.members,
+        });
+        await reloadPhotos();
+        return result;
+      } finally {
+        setSyncing(null);
+      }
+    },
+    [persistAlbum, reloadPhotos],
+  );
+
+  const shareAlbum = useCallback(
+    async (albumId: string) => {
+      const album = albums.find((a) => a.id === albumId);
+      if (!album) throw new Error('アルバムが見つかりません');
+      const { remoteId, inviteToken } = await sharing.createSharedAlbum(album);
+      const shared: Album = { ...album, remoteId, inviteToken, shareRole: 'owner' };
+      await persistAlbum(shared);
+      await runSync(shared);
+      return inviteLink(shared);
+    },
+    [albums, persistAlbum, runSync],
+  );
+
+  const syncAlbumById = useCallback(
+    async (albumId: string) => {
+      const album = albums.find((a) => a.id === albumId);
+      if (!album) throw new Error('アルバムが見つかりません');
+      return runSync(album);
+    },
+    [albums, runSync],
+  );
+
+  const joinAlbum = useCallback(
+    async (token: string) => {
+      const joined = await sharing.joinByToken(token);
+      // すでに参加しているアルバムなら、それをそのまま開く
+      const existing = albums.find((a) => a.remoteId === joined.remoteId);
+      if (existing) {
+        await runSync(existing);
+        return existing.id;
+      }
+      const album: Album = {
+        ...makeAlbum(joined.title),
+        note: joined.note,
+        remoteId: joined.remoteId,
+        inviteToken: joined.inviteToken,
+        shareRole: 'member',
+      };
+      await db.putAlbum(album);
+      setAlbums((prev) => [...prev, album]);
+      await runSync(album);
+      return album.id;
+    },
+    [albums, runSync],
+  );
+
+  const stopSharing = useCallback(
+    async (albumId: string) => {
+      const album = albums.find((a) => a.id === albumId);
+      if (!album?.remoteId) return;
+      await sharing.stopSharing(album);
+      await persistAlbum({
+        ...album,
+        remoteId: null,
+        inviteToken: null,
+        shareRole: null,
+        lastSyncedAt: null,
+        memberCount: null,
+      });
+    },
+    [albums, persistAlbum],
+  );
+
   const addFiles = useCallback(
     async (files: File[], albumId?: string) => {
       if (files.length === 0) return null;
@@ -229,6 +347,11 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
       if (result.addedIds.length > 0) {
         if (albumId && albumId !== UNSORTED_ID) {
           await db.setPhotosAlbum(result.addedIds, albumId);
+          const target = albums.find((a) => a.id === albumId);
+          if (target?.remoteId) {
+            await reloadPhotos();
+            await runSync(target).catch(() => undefined);
+          }
         } else {
           await autoAssign(result.addedIds, albums, photos, settings, createAlbum);
           setAlbums(await db.allAlbums());
@@ -237,7 +360,7 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
       await reloadPhotos();
       return result;
     },
-    [albums, photos, settings, createAlbum, reloadPhotos],
+    [albums, photos, settings, createAlbum, reloadPhotos, runSync],
   );
 
   const removePhoto = useCallback(
@@ -303,6 +426,13 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
     saveSpotEdit,
     spotTitleOf,
     spotNoteOf,
+    sharingConfigured,
+    syncing,
+    shareAlbum,
+    syncAlbum: syncAlbumById,
+    joinAlbum,
+    stopSharing,
+    inviteLink,
   };
 
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;

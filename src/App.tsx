@@ -3,6 +3,7 @@ import { LibraryProvider, useLibrary } from './lib/store';
 import { AlbumList } from './components/AlbumList';
 import { AlbumDetail } from './components/AlbumDetail';
 import { SettingsPanel } from './components/SettingsPanel';
+import { JoinScreen } from './components/JoinScreen';
 
 /** ブラウザの戻る/進むが効くように、画面の状態は URL のハッシュで持つ。 */
 function useHashRoute(): [string, (route: string) => void] {
@@ -26,6 +27,7 @@ function Shell(): JSX.Element {
   const { ready, albumViews, geocodingLeft, photos } = useLibrary();
   const [route, navigate] = useHashRoute();
 
+  const joinToken = route.startsWith('/join/') ? route.slice('/join/'.length) : null;
   const albumId = route.startsWith('/album/') ? route.slice('/album/'.length) : null;
   const view = albumId ? albumViews.find((v) => v.album.id === albumId) : null;
 
@@ -65,6 +67,12 @@ function Shell(): JSX.Element {
             <div className="empty__emoji">🧳</div>
             読み込んでいます…
           </div>
+        ) : joinToken ? (
+          <JoinScreen
+            token={joinToken}
+            onJoined={(id) => navigate(`/album/${id}`)}
+            onCancel={() => navigate('/')}
+          />
         ) : route === '/settings' ? (
           <SettingsPanel onClose={() => navigate('/')} />
         ) : view ? (
@@ -76,7 +84,8 @@ function Shell(): JSX.Element {
 
       <footer className="footer">
         <div className="container">
-          写真とデータはこの端末のブラウザ内（IndexedDB）にのみ保存されます。
+          写真はこの端末のブラウザ内（IndexedDB）に保存されます。
+          共有をオンにしたアルバムだけが、参加者と同期されます。
           <br />
           地図と地名：
           <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
