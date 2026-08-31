@@ -1,8 +1,14 @@
 import { useCallback, useRef, useState } from 'react';
 import { useLibrary } from '../lib/store';
 
+interface Props {
+  compact?: boolean;
+  /** 取り込んだ写真を入れるアルバム。省略すると撮影日から自動で振り分ける */
+  albumId?: string;
+}
+
 /** 写真をドラッグ&ドロップ、またはファイル選択で取り込むためのゾーン。 */
-export function Uploader({ compact = false }: { compact?: boolean }): JSX.Element {
+export function Uploader({ compact = false, albumId }: Props): JSX.Element {
   const { addFiles, importing } = useLibrary();
   const [dragging, setDragging] = useState(false);
   const [lastFailed, setLastFailed] = useState<Array<{ fileName: string; reason: string }>>([]);
@@ -12,10 +18,10 @@ export function Uploader({ compact = false }: { compact?: boolean }): JSX.Elemen
     async (fileList: FileList | null) => {
       if (!fileList || fileList.length === 0) return;
       setLastFailed([]);
-      const result = await addFiles(Array.from(fileList));
+      const result = await addFiles(Array.from(fileList), albumId);
       if (result) setLastFailed(result.failed);
     },
-    [addFiles],
+    [addFiles, albumId],
   );
 
   const busy = importing !== null;
@@ -63,7 +69,9 @@ export function Uploader({ compact = false }: { compact?: boolean }): JSX.Elemen
             {compact ? '写真を追加する' : '写真をここにドロップ'}
           </h3>
           <p className="dropzone__hint">
-            JPEG・PNG・HEIC に対応。撮影日時と位置情報から、旅ごとに自動でまとめます。
+            {albumId
+              ? 'JPEG・PNG・HEIC に対応。このアルバムに追加されます。'
+              : 'JPEG・PNG・HEIC に対応。撮影日時と位置情報から、旅ごとに自動でまとめます。'}
           </p>
           <button type="button" className="btn btn--primary" onClick={() => inputRef.current?.click()}>
             写真を選ぶ

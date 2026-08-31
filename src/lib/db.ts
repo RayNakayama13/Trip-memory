@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { Edit, Photo, Place, Settings } from './types';
+import type { Album, Edit, Photo, Place, Settings } from './types';
 import { DEFAULT_SETTINGS } from './types';
 
 interface TripMemoryDB extends DBSchema {
@@ -13,7 +13,11 @@ interface TripMemoryDB extends DBSchema {
     key: string;
     value: { key: string; place: Place | null; fetchedAt: number };
   };
-  /** ユーザーが手で編集したタイトル・メモ */
+  albums: {
+    key: string;
+    value: Album;
+  };
+  /** スポットの名前・メモ（スポットは計算で作られるため別に持つ） */
   edits: {
     key: string;
     value: Edit;
@@ -25,19 +29,26 @@ interface TripMemoryDB extends DBSchema {
 }
 
 const DB_NAME = 'trip-memory';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<TripMemoryDB>> | null = null;
 
 function db(): Promise<IDBPDatabase<TripMemoryDB>> {
   if (!dbPromise) {
     dbPromise = openDB<TripMemoryDB>(DB_NAME, DB_VERSION, {
-      upgrade(database) {
-        const photos = database.createObjectStore('photos', { keyPath: 'id' });
-        photos.createIndex('takenAt', 'takenAt');
-        database.createObjectStore('places', { keyPath: 'key' });
-        database.createObjectStore('edits', { keyPath: 'key' });
-        database.createObjectStore('meta');
+      upgrade(database, oldVersion) {
+        if (oldVersion < 1) {
+          const photos = database.createObjectStore('photos', { keyPath: 'id' });
+          photos.createIndex('takenAt', 'takenAt');
+          database.createObjectStore('places', { keyPath: 'key' });
+          database.createObjectStore('edits', { keyPath: 'key' });
+          database.createObjectStore('meta');
+        }
+        if (oldVersion < 2) {
+          // アルバムを実体として持つようにした。既存の写真は albumId を持たないので、
+          // 起動後に自動グループ分けでアルバムへ振り分ける（migrateToAlbums）。
+          database.createObjectStore('albums', { keyPath: 'id' });
+        }
       },
     });
   }
@@ -64,7 +75,41 @@ export async function deletePhoto(id: string): Promise<void> {
 }
 
 export async function deleteAllPhotos(): Promise<void> {
-  await (await db()).clear('photos');
+  const database = await db();
+  await Promise.all([database.clear('photos'), database.clear('albums')]);
+}
+
+export async function deletePhotos(ids: string[]): Promise<void> {
+  const database = await db();
+  const tx = database.transaction('photos', 'readwrite');
+  await Promise.all([...ids.map((id) => tx.store.delete(id)), tx.done]);
+}
+
+/** 複数の写真の所属アルバムをまとめて書き換える。 */
+export async function setPhotosAlbum(ids: string[], albumId: string | null): Promise<void> {
+  const database = await db();
+  const tx = database.transaction('photos', 'readwrite');
+  await Promise.all(
+    ids.map(async (id) => {
+      const photo = await tx.store.get(id);
+      if (photo) await tx.store.put({ ...photo, albumId });
+    }),
+  );
+  await tx.done;
+}
+
+/* ---------- albums ---------- */
+
+export async function allAlbums(): Promise<Album[]> {
+  return (await db()).getAll('albums');
+}
+
+export async function putAlbum(album: Album): Promise<void> {
+  await (await db()).put('albums', album);
+}
+
+export async function deleteAlbum(id: string): Promise<void> {
+  await (await db()).delete('albums', id);
 }
 
 /* ---------- places cache ---------- */
@@ -113,6 +158,15 @@ export async function requestPersistentStorage(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** 一度きりの処理（アルバムへの移行など）が済んだかどうかの記録 */
+export async function getFlag(key: string): Promise<boolean> {
+  return ((await (await db()).get('meta', key)) as boolean | undefined) ?? false;
+}
+
+export async function setFlag(key: string, value: boolean): Promise<void> {
+  await (await db()).put('meta', value, key);
 }
 
 /** 保存容量の目安（ブラウザが対応している場合のみ） */

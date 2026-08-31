@@ -15,6 +15,8 @@ export interface ImportProgress {
   skipped: number;
   failed: Array<{ fileName: string; reason: string }>;
   currentFileName: string;
+  /** 新しく保存された写真の ID（アルバムへの振り分けに使う） */
+  addedIds: string[];
 }
 
 const HEIC_PATTERN = /\.(heic|heif)$/i;
@@ -65,6 +67,7 @@ export async function importFiles(
       .filter((f) => !isImageCandidate(f))
       .map((f) => ({ fileName: f.name, reason: '画像ではないファイルです' })),
     currentFileName: '',
+    addedIds: [],
   };
   onProgress({ ...progress });
 
@@ -89,6 +92,8 @@ export async function importFiles(
         const photo: Photo = {
           id,
           fileName: file.name,
+          // 取り込んだ直後は未整理。呼び出し側がアルバムへ振り分ける
+          albumId: null,
           takenAt: exif.takenAt,
           takenAtSource: exif.takenAtSource,
           lat: exif.lat,
@@ -103,6 +108,7 @@ export async function importFiles(
         };
         await putPhoto(photo);
         progress.added += 1;
+        progress.addedIds.push(id);
       }
     } catch (error) {
       progress.failed.push({

@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react';
-import type { Photo, Spot, Trip } from '../lib/types';
+import type { AlbumView, Photo, Spot } from '../lib/types';
 import { dayKey, formatDate, formatDuration, formatTime } from '../lib/format';
 import { photoUrl } from '../lib/media';
 import { EditableText } from './EditableText';
 
 interface Props {
-  trip: Trip;
+  view: AlbumView;
   photoById: Map<string, Photo>;
   spotTitle: (spot: Spot, index: number) => string;
   noteOf: (key: string) => string;
@@ -16,15 +16,17 @@ interface Props {
   activeSource: 'map' | 'timeline' | null;
   onActivateSpot: (spotId: string) => void;
   onOpenPhoto: (photoId: string) => void;
+  /** このスポットの写真をまとめて別のアルバムへ移す */
+  onMoveSpot: (spot: Spot) => void;
 }
 
-/** 旅の写真を「日 → 立ち寄りスポット」の順に並べた時系列ビュー。 */
+/** アルバムの写真を「日 → 立ち寄りスポット」の順に並べた時系列ビュー。 */
 export function Timeline(props: Props): JSX.Element {
-  const { trip } = props;
+  const { view } = props;
 
   // 同じ日のスポットをまとめる（撮影日時が無いものは末尾の「日付不明」に入る）
   const days = new Map<string, Spot[]>();
-  for (const spot of trip.spots) {
+  for (const spot of view.spots) {
     const key = spot.startAt ? dayKey(spot.startAt) : 'unknown';
     const list = days.get(key);
     if (list) list.push(spot);
@@ -62,7 +64,7 @@ export function Timeline(props: Props): JSX.Element {
 
 function SpotSection({
   spot,
-  trip,
+  view,
   photoById,
   spotTitle,
   noteOf,
@@ -72,9 +74,10 @@ function SpotSection({
   activeSource,
   onActivateSpot,
   onOpenPhoto,
+  onMoveSpot,
 }: Props & { spot: Spot }): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
-  const index = trip.spots.indexOf(spot);
+  const index = view.spots.indexOf(spot);
   const active = activeSpotId === spot.id;
 
   // 地図のピンから選ばれたときだけ、その場所までスクロールする
@@ -114,6 +117,14 @@ function SpotSection({
           />
         </span>
         <span className="tag">{spot.activity}</span>
+        <button
+          type="button"
+          className="btn btn--ghost spot__move"
+          onClick={() => onMoveSpot(spot)}
+          title="このスポットの写真を別のアルバムへ移す"
+        >
+          アルバムを移す
+        </button>
       </div>
 
       <div className="spot__meta">

@@ -328,6 +328,7 @@ img {
 .section-title {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 10px;
   margin: 34px 0 16px;
 }
@@ -400,6 +401,127 @@ img {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 10px;
+}
+
+.trip-card__auto {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* ---------- 移動先を選ぶダイアログ ---------- */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(8, 9, 12, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+}
+
+@media (min-width: 641px) {
+  .modal {
+    align-items: center;
+  }
+}
+
+.modal__panel {
+  width: 100%;
+  max-width: 460px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  margin-bottom: var(--safe-bottom);
+}
+
+.modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal__head h3 {
+  font-size: 16px;
+}
+
+.modal__body {
+  padding: 10px;
+  overflow-y: auto;
+  display: grid;
+  gap: 6px;
+}
+
+.album-option {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.album-option:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.album-option:disabled {
+  opacity: 0.5;
+}
+
+.album-option--new {
+  border-style: dashed;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.album-option__title {
+  font-weight: 700;
+  font-size: 14.5px;
+}
+
+.album-option__meta {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+/* ---------- 削除の確認 ---------- */
+
+.danger-panel {
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  background: rgba(255, 107, 107, 0.07);
+  border-radius: var(--radius);
+}
+
+.danger-panel__title {
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.danger-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* ---------- 旅の詳細 ---------- */
@@ -576,6 +698,13 @@ img {
 .spot__title {
   font-size: 17px;
   font-weight: 700;
+}
+
+.spot__move {
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 999px;
 }
 
 .spot__meta {

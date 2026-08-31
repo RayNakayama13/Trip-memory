@@ -9,6 +9,8 @@ interface Props {
   onIndexChange: (index: number) => void;
   onClose: () => void;
   onDelete: (photoId: string) => void;
+  /** この写真を別のアルバムへ移す */
+  onMove: (photoId: string) => void;
   caption?: string;
 }
 
@@ -19,6 +21,7 @@ export function Lightbox({
   onIndexChange,
   onClose,
   onDelete,
+  onMove,
   caption,
 }: Props): JSX.Element | null {
   const photo = photos[index];
@@ -63,6 +66,9 @@ export function Lightbox({
           {index + 1} / {photos.length}
         </span>
         <span style={{ flex: 1 }} />
+        <button type="button" className="btn btn--ghost" onClick={() => onMove(photo.id)}>
+          アルバムを移す
+        </button>
         <button
           type="button"
           className="btn btn--danger"

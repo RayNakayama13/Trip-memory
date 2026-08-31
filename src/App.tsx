@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { LibraryProvider, useLibrary } from './lib/store';
-import { TripList } from './components/TripList';
-import { TripDetail } from './components/TripDetail';
+import { AlbumList } from './components/AlbumList';
+import { AlbumDetail } from './components/AlbumDetail';
 import { SettingsPanel } from './components/SettingsPanel';
 
 /** ブラウザの戻る/進むが効くように、画面の状態は URL のハッシュで持つ。 */
@@ -23,16 +23,16 @@ function useHashRoute(): [string, (route: string) => void] {
 }
 
 function Shell(): JSX.Element {
-  const { ready, trips, geocodingLeft, photos } = useLibrary();
+  const { ready, albumViews, geocodingLeft, photos } = useLibrary();
   const [route, navigate] = useHashRoute();
 
-  const tripId = route.startsWith('/trip/') ? route.slice('/trip/'.length) : null;
-  const trip = tripId ? trips.find((t) => t.id === tripId) : null;
+  const albumId = route.startsWith('/album/') ? route.slice('/album/'.length) : null;
+  const view = albumId ? albumViews.find((v) => v.album.id === albumId) : null;
 
-  // 写真を削除して旅そのものが消えた場合は一覧に戻す
+  // アルバムを削除するなどして表示先が消えた場合は一覧に戻す
   useEffect(() => {
-    if (ready && tripId && !trip) navigate('/');
-  }, [ready, tripId, trip, navigate]);
+    if (ready && albumId && !view) navigate('/');
+  }, [ready, albumId, view, navigate]);
 
   return (
     <div className="app">
@@ -67,10 +67,10 @@ function Shell(): JSX.Element {
           </div>
         ) : route === '/settings' ? (
           <SettingsPanel onClose={() => navigate('/')} />
-        ) : trip ? (
-          <TripDetail trip={trip} onBack={() => navigate('/')} />
+        ) : view ? (
+          <AlbumDetail view={view} onBack={() => navigate('/')} />
         ) : (
-          <TripList onOpenTrip={(id) => navigate(`/trip/${id}`)} />
+          <AlbumList onOpenAlbum={(id) => navigate(`/album/${id}`)} />
         )}
       </main>
 

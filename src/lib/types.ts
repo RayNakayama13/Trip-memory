@@ -18,6 +18,8 @@ export interface Place {
 export interface Photo {
   id: string;
   fileName: string;
+  /** 所属するアルバムの ID。どこにも入っていない写真は null（＝未整理） */
+  albumId: string | null;
   /** 撮影日時（EXIF。無ければファイルの更新日時、それも無ければ null） */
   takenAt: number | null;
   /** 撮影日時をどこから得たか */
@@ -36,10 +38,22 @@ export interface Photo {
   createdAt: number;
 }
 
+/** ひとつの旅のアルバム。写真をまとめる入れ物で、利用者が作って名前を付ける。 */
+export interface Album {
+  id: string;
+  /** 利用者が付けた名前。空のときは写真から作った候補名を表示する */
+  title: string;
+  note: string;
+  /** 表紙にする写真。null なら自動で選ぶ */
+  coverPhotoId: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** 同じ場所・近い時刻でまとまった写真のかたまり（＝立ち寄りスポット） */
 export interface Spot {
   id: string;
-  tripId: string;
+  albumId: string;
   photoIds: string[];
   startAt: number;
   endAt: number;
@@ -50,21 +64,21 @@ export interface Spot {
   activity: string;
 }
 
-/** 連続した日程でまとまった写真のかたまり（＝ひとつの旅） */
-export interface Trip {
-  id: string;
+/** アルバムに、写真から計算した中身（スポット・期間・表紙）を足した表示用のまとまり。 */
+export interface AlbumView {
+  album: Album;
   photoIds: string[];
   spots: Spot[];
   startAt: number;
   endAt: number;
-  /** 自動生成したタイトル（ユーザー編集があればそちらが優先される） */
-  autoTitle: string;
+  /** 写真の場所と日付から作った候補名。album.title が空のときに使う */
+  suggestedTitle: string;
   coverPhotoId: string | null;
 }
 
-/** ユーザーが手で書き換えた内容（自動生成結果に上書きされないよう別管理） */
+/** スポットの名前・メモ（スポットは写真から計算されるため、編集内容は別に持つ） */
 export interface Edit {
-  /** trip:<id> または spot:<id> */
+  /** spot:<id> */
   key: string;
   title?: string;
   note?: string;
@@ -73,7 +87,7 @@ export interface Edit {
 }
 
 export interface Settings {
-  /** これ以上の間隔が空いたら別の旅とみなす（時間） */
+  /** これ以上の間隔が空いたら別のアルバムに振り分ける（時間） */
   tripGapHours: number;
   /** これ以上の間隔が空いたら別のスポットとみなす（分） */
   spotGapMinutes: number;
