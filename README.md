@@ -32,7 +32,8 @@ iPhone などで撮った写真に埋め込まれている EXIF（撮影日時�
 ## iPhone で使う
 
 公開先の URL を Safari で開き、共有ボタン → **「ホーム画面に追加」**。
-アプリと同じように全画面で起動し、一度開いたあとはオフラインでも見返せます。
+アプリと同じように全画面で起動し、一度開いたあとはオフラインでも見返せます
+（`https://` で配信されている場合）。
 
 写真は「写真を選ぶ」から**フォトライブラリを直接選択**できます（複数選択可）。
 位置情報が入るように、iPhone の **設定 > プライバシーとセキュリティ > 位置情報サービス > カメラ** を
@@ -44,23 +45,59 @@ iPhone などで撮った写真に埋め込まれている EXIF（撮影日時�
 - 写真：タップで拡大、**左右スワイプ**で送る
 - タイトル・メモ：タップしてその場で編集
 
-## 公開する（GitHub Pages）
+## 公開する
 
-push すると GitHub Actions が自動でビルドして GitHub Pages に公開します
-（`.github/workflows/deploy.yml`）。
+このアプリはサーバーを持たない静的サイトなので、置き場所は自由に選べます。
 
-**最初に 1 回だけ、GitHub の画面で Pages を有効にしてください。**
-リポジトリの **Settings > Pages > Build and deployment > Source** を **「GitHub Actions」** に変更します。
-（Pages の有効化は管理者権限が必要な操作で、Actions のトークンからは行えません。）
+### A. GitHub Pages（リポジトリが public のとき・無料）
+
+`.github/workflows/deploy.yml` が push を検知して自動でビルド・公開します。
+公開先は `https://<ユーザー名>.github.io/<リポジトリ名>/` です。
+
+初回だけ、リポジトリの **Settings > Pages > Build and deployment > Source** を
+**「GitHub Actions」** にしてください（Pages の有効化は管理者権限が要る操作で、
+Actions のトークンからは行えません）。
+
+> **private リポジトリでは GitHub Pages は有料プラン（Pro 以上）の機能です。**
+> 無料で使うにはリポジトリを public にするか、下の B を選んでください。
+> なお、写真はリポジトリに含まれず端末内にしか保存されないため、
+> public にしても公開されるのはソースコードだけです。
 
 対象ブランチは `main` と `claude/travel-memory-photo-service-ty988y` です。
-ブランチを整理したときは、`deploy.yml` の `on.push.branches` を実際のデフォルトブランチに合わせてください
-（GitHub Pages は既定でデフォルトブランチからのデプロイのみを許可します）。
+ブランチを整理したときは、`deploy.yml` の `on.push.branches` を実際のデフォルトブランチに
+合わせてください（GitHub Pages は既定でデフォルトブランチからのデプロイのみを許可します）。
 
-公開先は `https://<ユーザー名>.github.io/<リポジトリ名>/` です。
-サブパス配信に合わせて `BASE_PATH` を自動で渡しているため、追加の設定は要りません。
+### B. Cloudflare Pages / Netlify / Vercel（private のまま・無料）
 
-設定後は Actions タブから workflow を再実行すれば公開されます。
+いずれも無料枠で private リポジトリを HTTPS 配信できます。設定は共通です。
+
+| 項目 | 値 |
+| --- | --- |
+| Build command | `npm run build` |
+| Output directory | `dist` |
+| Node version | 22 |
+
+これらはサイトのルートに配置されるため、`BASE_PATH` の指定は不要です（既定の `/` のまま）。
+
+### C. 公開せずに自分の端末だけで使う（無料）
+
+開発サーバーは LAN からもアクセスできる設定になっています。
+
+```bash
+npm run dev
+```
+
+表示される `Network:` の URL（`http://192.168.x.x:5173/` など）を、
+同じ Wi-Fi につないだ iPhone の Safari で開けば、そのまま使えます。
+
+ただし `https://` ではないため、次の 2 つは使えません（写真の取り込み・地図・
+時系列表示などの主要な機能は問題なく動きます）。
+
+- Service Worker によるオフライン表示
+- ホーム画面に追加したときの全画面表示
+
+また PC の開発サーバーを止めると iPhone からは開けなくなります。
+常時使いたい場合は A か B を選んでください。
 
 ## 使い方（ローカル）
 

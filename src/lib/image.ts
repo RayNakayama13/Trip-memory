@@ -78,12 +78,46 @@ export async function resize(decoded: Decoded, maxEdge: number, quality: number)
   });
 }
 
-/** ファイル内容の SHA-256。同じ写真を二度取り込んでも重複しないようにするための ID。 */
+/**
+ * crypto.subtle が使えないときの代替ハッシュ。
+ *
+ * crypto.subtle は「安全なコンテキスト」（https:// か localhost）でしか使えず、
+ * 自宅の Wi-Fi 経由で http://192.168.x.x のように開いた場合は存在しない。
+ * 重複した写真を見分けるのが目的なので、暗号強度は必要ない。
+ * FNV-1a を 4 本、別々の初期値で同時に回して 128bit 相当の値を作る。
+ */
+function fallbackHash(bytes: Uint8Array): string {
+  const PRIME = 0x01000193;
+  let h0 = 0x811c9dc5;
+  let h1 = 0x1000193b;
+  let h2 = 0x7fed7fed;
+  let h3 = 0xdeadbeef;
+
+  for (let i = 0; i < bytes.length; i += 1) {
+    const b = bytes[i];
+    h0 = Math.imul(h0 ^ b, PRIME);
+    h1 = Math.imul(h1 ^ (b + i), PRIME);
+    h2 = Math.imul(h2 ^ (b ^ (i >>> 3)), PRIME);
+    h3 = Math.imul(h3 ^ (b + (i << 1)), PRIME);
+  }
+
+  // 長さも混ぜて、並びが同じで長さだけ違うデータの衝突を避ける
+  h0 ^= bytes.length;
+  h3 = Math.imul(h3 ^ bytes.length, PRIME);
+
+  return [h0, h1, h2, h3].map((h) => (h >>> 0).toString(16).padStart(8, '0')).join('');
+}
+
+/** ファイル内容のハッシュ。同じ写真を二度取り込んでも重複しないようにするための ID。 */
 export async function contentHash(file: Blob): Promise<string> {
   const buffer = await file.arrayBuffer();
-  const digest = await crypto.subtle.digest('SHA-256', buffer);
-  return Array.from(new Uint8Array(digest))
-    .slice(0, 16)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+
+  if (crypto?.subtle) {
+    const digest = await crypto.subtle.digest('SHA-256', buffer);
+    return Array.from(new Uint8Array(digest))
+      .slice(0, 16)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  return fallbackHash(new Uint8Array(buffer));
 }
