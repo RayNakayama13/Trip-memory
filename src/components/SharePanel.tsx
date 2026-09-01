@@ -5,7 +5,7 @@ import { formatDateTime } from '../lib/format';
 
 /** アルバムを他の人と共有するための操作をまとめたパネル。 */
 export function SharePanel({ album }: { album: Album }): JSX.Element {
-  const { sharingConfigured, syncing, shareAlbum, syncAlbum, stopSharing, inviteLink, viewLink } =
+  const { photos, sharingConfigured, syncing, shareAlbum, syncAlbum, stopSharing, inviteLink, viewLink } =
     useLibrary();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,6 +16,10 @@ export function SharePanel({ album }: { album: Album }): JSX.Element {
 
   const shared = Boolean(album.remoteId);
   const progress = syncing?.albumId === album.id ? syncing.progress : null;
+
+  // 送信が途中で止まっても気づけるよう、未送信の枚数をいつでも見えるようにする
+  const inAlbum = photos.filter((p) => p.albumId === album.id);
+  const pending = inAlbum.filter((p) => !p.uploaded).length;
 
   const run = async (task: () => Promise<void>): Promise<void> => {
     setBusy(true);
@@ -69,6 +73,19 @@ export function SharePanel({ album }: { album: Album }): JSX.Element {
             {album.memberCount ? ` これまでに ${album.memberCount} 人が開きました。` : ''}
             {album.lastSyncedAt ? ` 最終更新 ${formatDateTime(album.lastSyncedAt)}。` : ''}
           </p>
+
+          {pending > 0 ? (
+            <div className="share__pending">
+              <strong>未送信の写真が {pending} 枚あります</strong>
+              <span className="faint">
+                （送信済み {inAlbum.length - pending} 枚 / 全 {inAlbum.length} 枚）
+                いま見てもらうと、送信済みのぶんだけが表示されます。
+                「いま同期する」を押して、画面を開いたままお待ちください。
+              </span>
+            </div>
+          ) : (
+            <p className="faint">写真 {inAlbum.length} 枚すべて送信済みです。</p>
+          )}
 
           <div className="share__group">
             <span className="share__label">見てもらうリンク</span>
@@ -133,6 +150,12 @@ export function SharePanel({ album }: { album: Album }): JSX.Element {
               disabled={busy || progress !== null}
               onClick={() => void run(async () => {
                 const result = await syncAlbum(album.id);
+                if (result.failed > 0) {
+                  setError(
+                    `${result.failed} 枚を送れませんでした（${result.failedReason ?? '理由不明'}）。` +
+                      'もう一度「いま同期する」を押すと、送れなかったぶんだけ送り直します。',
+                  );
+                }
                 setMessage(
                   `同期しました（送信 ${result.uploaded} 枚 / 受信 ${result.downloaded} 枚）`,
                 );
@@ -206,7 +229,9 @@ export function SharePanel({ album }: { album: Album }): JSX.Element {
               setMessage('共有を始めました。下のリンクを渡してください。');
             })}
           >
-            {progress ? `写真を送信中 ${progress.done}/${progress.total}` : 'このアルバムを共有する'}
+            {progress
+              ? `写真を送信中 ${progress.done}/${progress.total}（画面を開いたままお待ちください）`
+              : 'このアルバムを共有する'}
           </button>
         </>
       )}

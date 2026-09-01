@@ -29,6 +29,9 @@ const SIGNED_URL_TTL = 60 * 60 * 6;
 export interface SyncResult {
   uploaded: number;
   downloaded: number;
+  /** 送れなかった写真の枚数と、最初の理由 */
+  failed: number;
+  failedReason: string | null;
   /** 相手側で書き換えられていた場合の、新しい名前とメモ */
   remote: { title: string; note: string; updatedAt: number } | null;
   members: number;
@@ -223,40 +226,52 @@ export async function syncAlbum(
   const localIds = new Set(localPhotos.map((p) => p.id));
 
   // --- 手元にしかない写真を上げる ---
+  //
+  // 1 枚失敗しただけで全体を止めると、残りが送られないまま終わってしまう。
+  // 送れなかった枚数を数えて先へ進み、あとからやり直せるようにする。
   const toUpload = localPhotos.filter((p) => !remoteIds.has(p.id));
   let uploaded = 0;
+  let failed = 0;
+  let failedReason: string | null = null;
+
   for (const photo of toUpload) {
-    onProgress?.({ phase: 'upload', done: uploaded, total: toUpload.length });
+    onProgress?.({ phase: 'upload', done: uploaded + failed, total: toUpload.length });
     const path = storagePath(remoteId, photo.id);
     const thumb = thumbPath(remoteId, photo.id);
-    const { error: uploadError } = await supabase.storage
-      .from(BUCKET)
-      .upload(path, photo.full, { contentType: 'image/jpeg', upsert: true });
-    if (uploadError) throw new Error(`写真の送信に失敗しました：${uploadError.message}`);
 
-    // 見るだけの人が一覧で大きい画像を読まずに済むよう、小さい画像も置く
-    const { error: thumbError } = await supabase.storage
-      .from(BUCKET)
-      .upload(thumb, photo.thumb, { contentType: 'image/jpeg', upsert: true });
-    if (thumbError) throw new Error(`写真の送信に失敗しました：${thumbError.message}`);
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from(BUCKET)
+        .upload(path, photo.full, { contentType: 'image/jpeg', upsert: true });
+      if (uploadError) throw new Error(uploadError.message);
 
-    const { error: insertError } = await supabase.from('shared_photos').upsert({
-      id: photo.id,
-      album_id: remoteId,
-      uploader_id: userId,
-      file_name: photo.fileName,
-      taken_at: photo.takenAt !== null ? new Date(photo.takenAt).toISOString() : null,
-      lat: photo.lat,
-      lon: photo.lon,
-      width: photo.width,
-      height: photo.height,
-      storage_path: path,
-      thumb_path: thumb,
-    });
-    if (insertError) throw new Error(`写真の登録に失敗しました：${insertError.message}`);
+      // 見るだけの人が一覧で大きい画像を読まずに済むよう、小さい画像も置く
+      const { error: thumbError } = await supabase.storage
+        .from(BUCKET)
+        .upload(thumb, photo.thumb, { contentType: 'image/jpeg', upsert: true });
+      if (thumbError) throw new Error(thumbError.message);
 
-    await db.putPhoto({ ...photo, uploaded: true });
-    uploaded += 1;
+      const { error: insertError } = await supabase.from('shared_photos').upsert({
+        id: photo.id,
+        album_id: remoteId,
+        uploader_id: userId,
+        file_name: photo.fileName,
+        taken_at: photo.takenAt !== null ? new Date(photo.takenAt).toISOString() : null,
+        lat: photo.lat,
+        lon: photo.lon,
+        width: photo.width,
+        height: photo.height,
+        storage_path: path,
+        thumb_path: thumb,
+      });
+      if (insertError) throw new Error(insertError.message);
+
+      await db.putPhoto({ ...photo, uploaded: true });
+      uploaded += 1;
+    } catch (e) {
+      failed += 1;
+      failedReason ??= e instanceof Error ? e.message : '不明なエラー';
+    }
   }
 
   // --- サーバーにしかない写真を落とす ---
@@ -322,7 +337,7 @@ export async function syncAlbum(
     .eq('album_id', remoteId);
 
   onProgress?.({ phase: 'done', done: 0, total: 0 });
-  return { uploaded, downloaded, remote, members: count ?? 1 };
+  return { uploaded, downloaded, failed, failedReason, remote, members: count ?? 1 };
 }
 
 /** 共有をやめる。持ち主ならサーバーから消し、参加者なら自分だけ抜ける。 */
