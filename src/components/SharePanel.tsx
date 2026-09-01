@@ -173,31 +173,7 @@ export function SharePanel({ album }: { album: Album }): JSX.Element {
                 : 'いま同期する'}
             </button>
 
-            {confirmingStop ? (
-              <>
-                <button
-                  type="button"
-                  className="btn btn--danger"
-                  disabled={busy}
-                  onClick={() => void run(async () => {
-                    await stopSharing(album.id);
-                    setConfirmingStop(false);
-                    setMessage('共有をやめました。写真はこの端末に残っています。');
-                  })}
-                >
-                  {album.shareRole === 'owner'
-                    ? 'サーバーから削除してやめる'
-                    : 'このアルバムから抜ける'}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  onClick={() => setConfirmingStop(false)}
-                >
-                  やめる
-                </button>
-              </>
-            ) : (
+            {!confirmingStop && (
               <button
                 type="button"
                 className="btn btn--ghost"
@@ -209,11 +185,49 @@ export function SharePanel({ album }: { album: Album }): JSX.Element {
             )}
           </div>
 
-          {album.shareRole === 'owner' && confirmingStop && (
-            <p className="faint">
-              サーバー上のアルバムと写真が消え、参加している人からは見えなくなります。
-              あなたの端末の写真は残ります。
-            </p>
+          {confirmingStop && (
+            <div className="danger-panel">
+              <p className="danger-panel__title">
+                {album.shareRole === 'owner' ? '共有をやめますか？' : 'このアルバムから抜けますか？'}
+              </p>
+              <p className="faint" style={{ marginBottom: 10 }}>
+                {album.shareRole === 'owner' ? (
+                  <>
+                    <strong>この端末の写真 {inAlbum.length} 枚は消えません。</strong>
+                    サーバーに置いた写真とアルバムだけが消え、これまでに渡したリンクは
+                    すべて開けなくなります。共有し直すこともできます。
+                  </>
+                ) : (
+                  <>
+                    <strong>この端末に取り込んだ写真は消えません。</strong>
+                    このアルバムの更新が届かなくなり、一覧からも外れます。
+                  </>
+                )}
+              </p>
+              <div className="danger-panel__actions">
+                <button
+                  type="button"
+                  className="btn btn--danger"
+                  disabled={busy}
+                  onClick={() => void run(async () => {
+                    await stopSharing(album.id);
+                    setConfirmingStop(false);
+                    setMessage('共有をやめました。この端末の写真はそのまま残っています。');
+                  })}
+                >
+                  {album.shareRole === 'owner'
+                    ? '共有をやめる（端末の写真は残す）'
+                    : 'このアルバムから抜ける'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => setConfirmingStop(false)}
+                >
+                  やめる
+                </button>
+              </div>
+            </div>
           )}
         </>
       ) : (
