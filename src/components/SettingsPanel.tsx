@@ -80,6 +80,25 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): JSX.Element
       </div>
 
       <div className="section-title">
+        <h2>共有</h2>
+      </div>
+      <div className="card settings">
+        <label className="field">
+          <span className="field__label">共有アルバムでの表示名</span>
+          <span className="field__hint">
+            他の人の共有アルバムを開いたときに、相手の一覧に出る名前です。空でも構いません。
+          </span>
+          <input
+            className="input"
+            value={settings.displayName}
+            placeholder="なまえ"
+            maxLength={40}
+            onChange={(e) => void updateSettings({ displayName: e.target.value })}
+          />
+        </label>
+      </div>
+
+      <div className="section-title">
         <h2>保存データ</h2>
       </div>
       <div className="card settings">

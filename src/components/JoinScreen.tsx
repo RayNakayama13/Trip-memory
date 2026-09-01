@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLibrary } from '../lib/store';
+import { NamePrompt } from './NamePrompt';
 
 interface Props {
   token: string;
@@ -9,7 +10,8 @@ interface Props {
 
 /** 招待リンクを開いたときの画面。参加すると共有アルバムが手元に増える。 */
 export function JoinScreen({ token, onJoined, onCancel }: Props): JSX.Element {
-  const { sharingConfigured, joinAlbum, syncing } = useLibrary();
+  const { sharingConfigured, joinAlbum, syncing, settings, updateSettings } = useLibrary();
+  const [name, setName] = useState<string | null>(settings.displayName || null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const started = useRef(false);
@@ -26,13 +28,25 @@ export function JoinScreen({ token, onJoined, onCancel }: Props): JSX.Element {
     }
   };
 
-  // リンクを開いたらそのまま参加まで進める（待たせない）
+  // 名前が決まったらそのまま参加まで進める（待たせない）
   useEffect(() => {
-    if (started.current || !sharingConfigured) return;
+    if (started.current || !sharingConfigured || name === null) return;
     started.current = true;
     void join();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sharingConfigured]);
+  }, [sharingConfigured, name]);
+
+  if (name === null && sharingConfigured) {
+    return (
+      <NamePrompt
+        action="開く"
+        onSubmit={(entered) => {
+          if (entered) void updateSettings({ displayName: entered });
+          setName(entered);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="container">

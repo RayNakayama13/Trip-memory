@@ -71,12 +71,29 @@ export function AlbumList({ onOpenAlbum }: Props): JSX.Element {
     );
   }
 
+  // 自分で作った旅と、他の人から共有されたものは分けて並べる
+  const mine = albumViews.filter((v) => v.album.shareRole !== 'member');
+  const sharedWithMe = albumViews.filter((v) => v.album.shareRole === 'member');
+
+  const cardFor = (view: (typeof albumViews)[number]): JSX.Element => (
+    <AlbumCard
+      key={view.album.id}
+      view={view}
+      coverUrl={(() => {
+        if (!view.coverPhotoId) return null;
+        const photo = photoById.get(view.coverPhotoId);
+        return photo ? photoUrl(photo, 'thumb') : null;
+      })()}
+      onOpen={() => onOpenAlbum(view.album.id)}
+    />
+  );
+
   return (
     <div className="container">
       <div className="section-title">
         <h2>旅の記録</h2>
         <span className="faint">
-          {albumViews.filter((v) => v.album.id !== UNSORTED_ID).length} 件 ・ 写真 {photos.length} 枚
+          {mine.filter((v) => v.album.id !== UNSORTED_ID).length} 件 ・ 写真 {photos.length} 枚
           {geocodingLeft > 0 && ` ・ 地名を取得中 (残り ${geocodingLeft})`}
         </span>
         <span style={{ flex: 1 }} />
@@ -85,20 +102,21 @@ export function AlbumList({ onOpenAlbum }: Props): JSX.Element {
         </button>
       </div>
 
-      <div className="trip-grid">
-        {albumViews.map((view) => (
-          <AlbumCard
-            key={view.album.id}
-            view={view}
-            coverUrl={(() => {
-              if (!view.coverPhotoId) return null;
-              const photo = photoById.get(view.coverPhotoId);
-              return photo ? photoUrl(photo, 'thumb') : null;
-            })()}
-            onOpen={() => onOpenAlbum(view.album.id)}
-          />
-        ))}
-      </div>
+      {mine.length > 0 ? (
+        <div className="trip-grid">{mine.map(cardFor)}</div>
+      ) : (
+        <p className="faint">まだ旅がありません。「＋ 新しい旅」から始められます。</p>
+      )}
+
+      {sharedWithMe.length > 0 && (
+        <>
+          <div className="section-title">
+            <h2>共有されたアルバム</h2>
+            <span className="faint">{sharedWithMe.length} 件 ・ 他の人が作った旅</span>
+          </div>
+          <div className="trip-grid">{sharedWithMe.map(cardFor)}</div>
+        </>
+      )}
       {dialog}
     </div>
   );
@@ -135,10 +153,14 @@ function AlbumCard({ view, coverUrl, onOpen }: CardProps): JSX.Element {
           {view.startAt > 0 && ` ・ ${days}日間`}
         </div>
         <div className="trip-card__chips">
-          {view.album.remoteId && (
-            <span className="tag">
-              共有中{view.album.memberCount ? ` ${view.album.memberCount}人` : ''}
-            </span>
+          {view.album.shareRole === 'member' ? (
+            <span className="tag">参加中</span>
+          ) : (
+            view.album.remoteId && (
+              <span className="tag">
+                共有中{view.album.memberCount ? ` ${view.album.memberCount}人` : ''}
+              </span>
+            )
           )}
           <span className="tag tag--quiet">写真 {view.photoIds.length} 枚</span>
           {view.spots.length > 0 && (

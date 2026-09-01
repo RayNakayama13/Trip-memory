@@ -37,6 +37,19 @@ export interface SyncResult {
   members: number;
 }
 
+/** 共有相手の一覧に出す 1 人ぶんの情報 */
+export interface ShareMember {
+  userId: string;
+  /** 参加時に入れてもらった名前。空なら「名前なし」 */
+  displayName: string;
+  role: 'owner' | 'editor' | 'viewer';
+  joinedAt: number;
+  /** 共有を止めているかどうか */
+  revoked: boolean;
+  /** 自分自身かどうか */
+  isMe: boolean;
+}
+
 export interface SyncProgress {
   phase: 'upload' | 'download' | 'done';
   done: number;
@@ -91,7 +104,10 @@ export async function createSharedAlbum(
 }
 
 /** 招待リンクの合言葉で参加し、アルバムの情報を受け取る。 */
-export async function joinByToken(token: string): Promise<{
+export async function joinByToken(
+  token: string,
+  displayName = '',
+): Promise<{
   remoteId: string;
   title: string;
   note: string;
@@ -101,7 +117,10 @@ export async function joinByToken(token: string): Promise<{
   const supabase = getSupabase();
   await ensureSignedIn();
 
-  const { data: joined, error } = await supabase.rpc('join_album', { token, display_name: '' });
+  const { data: joined, error } = await supabase.rpc('join_album', {
+    token,
+    display_name: displayName,
+  });
   if (error || !joined) {
     const reason = error?.message ? `：${error.message}` : '';
     throw new Error(`この招待リンクは使えませんでした${reason}`);
@@ -126,6 +145,7 @@ export async function joinByToken(token: string): Promise<{
 
 /** 見るだけのリンクで開いたアルバムの中身。端末には保存しない。 */
 export interface ViewedAlbum {
+  remoteId: string;
   title: string;
   note: string;
   photos: PhotoMeta[];
@@ -139,11 +159,17 @@ export interface ViewedAlbum {
  * 手元のアルバムには取り込まず、その場で表示するだけなので、画像は
  * 期限付きの URL を受け取って <img> から直接読む。
  */
-export async function loadAlbumForViewing(viewToken: string): Promise<ViewedAlbum> {
+export async function loadAlbumForViewing(
+  viewToken: string,
+  displayName = '',
+): Promise<ViewedAlbum> {
   const supabase = getSupabase();
   await ensureSignedIn();
 
-  const { data: albumId, error: joinError } = await supabase.rpc('view_album', { token: viewToken });
+  const { data: albumId, error: joinError } = await supabase.rpc('view_album', {
+    token: viewToken,
+    display_name: displayName,
+  });
   if (joinError || !albumId) {
     const reason = joinError?.message ? `：${joinError.message}` : '';
     throw new Error(`この共有リンクは使えませんでした${reason}`);
@@ -182,6 +208,7 @@ export async function loadAlbumForViewing(viewToken: string): Promise<ViewedAlbu
     .sort((a, b) => (a.takenAt ?? 0) - (b.takenAt ?? 0));
 
   return {
+    remoteId: albumId as string,
     title: (album.title as string) ?? '',
     note: (album.note as string) ?? '',
     photos,
@@ -338,6 +365,45 @@ export async function syncAlbum(
 
   onProgress?.({ phase: 'done', done: 0, total: 0 });
   return { uploaded, downloaded, failed, failedReason, remote, members: count ?? 1 };
+}
+
+/** 共有している相手の一覧を取る。 */
+export async function listMembers(remoteId: string): Promise<ShareMember[]> {
+  const supabase = getSupabase();
+  const me = await ensureSignedIn();
+
+  const { data, error } = await supabase
+    .from('album_members')
+    .select('user_id, display_name, role, joined_at, revoked_at')
+    .eq('album_id', remoteId);
+  if (error) throw new Error(`共有相手の一覧を取得できませんでした：${error.message}`);
+
+  return (data ?? [])
+    .map((row) => ({
+      userId: row.user_id as string,
+      displayName: (row.display_name as string) ?? '',
+      role: (row.role as ShareMember['role']) ?? 'viewer',
+      joinedAt: new Date(row.joined_at as string).getTime(),
+      revoked: row.revoked_at !== null,
+      isMe: row.user_id === me,
+    }))
+    .sort((a, b) => a.joinedAt - b.joinedAt);
+}
+
+/** 特定の相手への共有を止める／再開する。 */
+export async function setMemberRevoked(
+  remoteId: string,
+  userId: string,
+  revoked: boolean,
+): Promise<void> {
+  const supabase = getSupabase();
+  await ensureSignedIn();
+  const { error } = await supabase
+    .from('album_members')
+    .update({ revoked_at: revoked ? new Date().toISOString() : null })
+    .eq('album_id', remoteId)
+    .eq('user_id', userId);
+  if (error) throw new Error(`共有の停止に失敗しました：${error.message}`);
 }
 
 /** 共有をやめる。持ち主ならサーバーから消し、参加者なら自分だけ抜ける。 */

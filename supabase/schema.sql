@@ -52,6 +52,11 @@ begin
   end if;
 end $$;
 
+-- 共有を止めた相手。行を消すだけだとリンクを開き直せば戻ってこられるので、
+-- 止めた記録を残して、参加し直せないようにする。
+alter table public.album_members
+  add column if not exists revoked_at timestamptz;
+
 create table if not exists public.shared_photos (
   -- 端末側と同じ内容ハッシュ。同じ写真を二重に上げないための ID
   id text not null,
@@ -92,7 +97,9 @@ set search_path = public
 as $$
   select exists (
     select 1 from public.album_members
-    where album_id = target_album and user_id = auth.uid()
+    where album_id = target_album
+      and user_id = auth.uid()
+      and revoked_at is null
   );
 $$;
 
@@ -108,6 +115,7 @@ as $$
     select 1 from public.album_members
     where album_id = target_album
       and user_id = auth.uid()
+      and revoked_at is null
       and role in ('owner', 'editor')
   );
 $$;
@@ -160,9 +168,18 @@ begin
     raise exception 'invalid_token';
   end if;
 
+  -- 共有を止められた相手は、リンクを開き直しても戻れない
+  if exists (
+    select 1 from public.album_members
+    where album_id = target and user_id = auth.uid() and revoked_at is not null
+  ) then
+    raise exception 'revoked';
+  end if;
+
   insert into public.album_members (album_id, user_id, display_name, role)
   values (target, auth.uid(), left(coalesce(display_name, ''), 40), 'editor')
-  on conflict (album_id, user_id) do update set display_name = excluded.display_name;
+  on conflict (album_id, user_id) do update
+    set display_name = coalesce(nullif(excluded.display_name, ''), album_members.display_name);
 
   return target;
 end;
@@ -178,7 +195,10 @@ grant execute on function public.join_album(text, text) to authenticated;
 -- 参加している人が見るだけのリンクを踏んでも、立場は下げない。
 -- ---------------------------------------------------------------------
 
-create or replace function public.view_album(token text)
+-- 引数を増やしたため、古い形の関数は残さない
+drop function if exists public.view_album(text);
+
+create or replace function public.view_album(token text, display_name text default '')
 returns uuid
 language plpgsql
 security definer
@@ -196,16 +216,25 @@ begin
     raise exception 'invalid_token';
   end if;
 
-  insert into public.album_members (album_id, user_id, role)
-  values (target, auth.uid(), 'viewer')
-  on conflict (album_id, user_id) do nothing;
+  -- 共有を止められた相手は、リンクを開き直しても戻れない
+  if exists (
+    select 1 from public.album_members
+    where album_id = target and user_id = auth.uid() and revoked_at is not null
+  ) then
+    raise exception 'revoked';
+  end if;
+
+  insert into public.album_members (album_id, user_id, display_name, role)
+  values (target, auth.uid(), left(coalesce(display_name, ''), 40), 'viewer')
+  on conflict (album_id, user_id) do update
+    set display_name = coalesce(nullif(excluded.display_name, ''), album_members.display_name);
 
   return target;
 end;
 $$;
 
-revoke all on function public.view_album(text) from public;
-grant execute on function public.view_album(text) to authenticated;
+revoke all on function public.view_album(text, text) from public;
+grant execute on function public.view_album(text, text) to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 行レベルセキュリティ
@@ -238,9 +267,36 @@ create policy shared_albums_delete on public.shared_albums
 -- 参加者: 同じアルバムの参加者だけが一覧を見られる。
 -- 追加は join_album 経由だけ（insert のポリシーを作らない＝拒否）。
 -- 自分の参加は自分で取り消せる。持ち主は誰でも外せる。
+-- 参加者の一覧は参加者どうしで見える。持ち主には、止めた相手も見える。
 drop policy if exists album_members_select on public.album_members;
 create policy album_members_select on public.album_members
-  for select using (public.is_album_member(album_id));
+  for select using (
+    public.is_album_member(album_id)
+    or exists (
+      select 1 from public.shared_albums a
+      where a.id = album_id and a.owner_id = auth.uid()
+    )
+  );
+
+-- 参加者の状態（共有の停止・再開）を変えられるのは持ち主だけ。
+-- 本人に自分の行を触らせると、止められた人が自分で解除したり、
+-- 見るだけの人が編集できる立場に書き換えたりできてしまう。
+-- 表示名は join_album / view_album を通して設定する。
+drop policy if exists album_members_update on public.album_members;
+create policy album_members_update on public.album_members
+  for update
+  using (
+    exists (
+      select 1 from public.shared_albums a
+      where a.id = album_id and a.owner_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.shared_albums a
+      where a.id = album_id and a.owner_id = auth.uid()
+    )
+  );
 
 drop policy if exists album_members_delete on public.album_members;
 create policy album_members_delete on public.album_members
@@ -353,7 +409,7 @@ create policy trip_photos_delete on storage.objects
 -- SQL Editor で実行すると、この結果が表として表示される。
 -- スマホなどで一部しか貼り付けられていないと途中で終わり、この表は出ない。
 --
--- 期待する値: tables = 3 / policies = 10 / storage_policies = 4 / functions = 5
+-- 期待する値: tables = 3 / policies = 11 / storage_policies = 4 / functions = 5
 -- ---------------------------------------------------------------------
 
 select

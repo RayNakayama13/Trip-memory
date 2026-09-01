@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Album } from '../lib/types';
 import { useLibrary } from '../lib/store';
 import { formatDateTime } from '../lib/format';
+import { ShareMembers } from './ShareMembers';
 
 /** アルバムを他の人と共有するための操作をまとめたパネル。 */
 export function SharePanel({ album }: { album: Album }): JSX.Element {
@@ -109,6 +110,8 @@ export function SharePanel({ album }: { album: Album }): JSX.Element {
               </button>
             </div>
           </div>
+
+          <ShareMembers album={album} />
 
           {showInvite ? (
             <div className="share__group">

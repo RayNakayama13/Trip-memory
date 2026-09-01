@@ -17,7 +17,7 @@ import { importFiles, type ImportProgress } from './importer';
 import { releasePhotoUrls } from './media';
 import { sharingConfigured } from './supabase';
 import * as sharing from './sharing';
-import type { SyncProgress, SyncResult } from './sharing';
+import type { ShareMember, SyncProgress, SyncResult } from './sharing';
 
 /** どのアルバムにも入っていない写真をまとめて見せるための、実体のないアルバム */
 export const UNSORTED_ID = '__unsorted__';
@@ -60,6 +60,10 @@ interface LibraryState {
   /** 招待リンクの合言葉で参加し、手元のアルバム ID を返す */
   joinAlbum: (token: string) => Promise<string>;
   stopSharing: (albumId: string) => Promise<void>;
+  /** 共有している相手の一覧 */
+  listMembers: (albumId: string) => Promise<ShareMember[]>;
+  /** 特定の相手への共有を止める／再開する */
+  setMemberRevoked: (albumId: string, userId: string, revoked: boolean) => Promise<void>;
   /** 一緒に写真を足せるリンクの URL */
   inviteLink: (album: Album) => string;
   /** 見るだけのリンクの URL */
@@ -309,9 +313,27 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
     [albums, runSync],
   );
 
+  const listMembers = useCallback(
+    async (albumId: string) => {
+      const album = albums.find((a) => a.id === albumId);
+      if (!album?.remoteId) return [];
+      return sharing.listMembers(album.remoteId);
+    },
+    [albums],
+  );
+
+  const setMemberRevoked = useCallback(
+    async (albumId: string, userId: string, revoked: boolean) => {
+      const album = albums.find((a) => a.id === albumId);
+      if (!album?.remoteId) return;
+      await sharing.setMemberRevoked(album.remoteId, userId, revoked);
+    },
+    [albums],
+  );
+
   const joinAlbum = useCallback(
     async (token: string) => {
-      const joined = await sharing.joinByToken(token);
+      const joined = await sharing.joinByToken(token, settings.displayName);
       // すでに参加しているアルバムなら、それをそのまま開く
       const existing = albums.find((a) => a.remoteId === joined.remoteId);
       if (existing) {
@@ -331,7 +353,7 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
       await runSync(album);
       return album.id;
     },
-    [albums, runSync],
+    [albums, runSync, settings.displayName],
   );
 
   const stopSharing = useCallback(
@@ -444,6 +466,8 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
     syncAlbum: syncAlbumById,
     joinAlbum,
     stopSharing,
+    listMembers,
+    setMemberRevoked,
     inviteLink,
     viewLink,
   };

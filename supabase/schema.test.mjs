@@ -264,6 +264,46 @@ check('持ち主はサムネイルを消せる',
   (await as(USER_A, `select name from storage.objects where name = $1`, [thumbPath])).rows.length === 0);
 await as(USER_C, `delete from album_members where user_id = $1`, [USER_C]);
 
+console.log('\n■ 特定の相手への共有を止める');
+
+// C を見るだけの相手として参加させ、持ち主 A が止める
+await as(USER_C, `select view_album('token-view', 'たろう')`);
+check('参加時に名前が記録される',
+  (await as(USER_A, `select display_name from album_members where user_id = $1`, [USER_C])).rows[0]?.display_name === 'たろう');
+check('持ち主は参加者の一覧を見られる',
+  (await as(USER_A, `select user_id, role, display_name from album_members where album_id = $1`, [albumId])).rows.length >= 2);
+
+await as(USER_A, `update album_members set revoked_at = now() where album_id = $1 and user_id = $2`, [albumId, USER_C]);
+check('止めた相手はアルバムを読めなくなる', (await as(USER_C, `select id from shared_albums`)).rows.length === 0);
+check('止めた相手は写真も読めない', (await as(USER_C, `select id from shared_photos`)).rows.length === 0);
+check('止めた相手は写真ファイルも読めない', (await as(USER_C, `select name from storage.objects`)).rows.length === 0);
+check('止めた相手はリンクを開き直しても戻れない', await denied(USER_C, `select view_album('token-view')`));
+check('止めた相手は編集用リンクでも入れない', await denied(USER_C, `select join_album('token-kyoto')`));
+
+check('止められた本人は自分で解除できない', await (async () => {
+  await as(USER_C, `update album_members set revoked_at = null where user_id = $1`, [USER_C]);
+  return (await as(USER_C, `select id from shared_albums`)).rows.length === 0;
+})());
+
+check('持ち主でない参加者は他人を止められない', await (async () => {
+  const before = await as(USER_A, `select revoked_at from album_members where user_id = $1`, [USER_A]);
+  await as(USER_B, `update album_members set revoked_at = now() where album_id = $1 and user_id = $2`, [albumId, USER_A]);
+  const after = await as(USER_A, `select revoked_at from album_members where user_id = $1`, [USER_A]);
+  return before.rows[0]?.revoked_at === after.rows[0]?.revoked_at;
+})());
+
+check('見るだけの人は自分を編集できる立場に変えられない', await (async () => {
+  await as(USER_A, `update album_members set revoked_at = null where album_id = $1 and user_id = $2`, [albumId, USER_C]);
+  await as(USER_C, `update album_members set role = 'editor' where user_id = $1`, [USER_C]);
+  const role = (await as(USER_A, `select role from album_members where user_id = $1`, [USER_C])).rows[0]?.role;
+  return role === 'viewer';
+})());
+
+check('持ち主が解除すれば、また見られるようになる',
+  (await as(USER_C, `select id from shared_albums`)).rows.length === 1);
+
+await as(USER_C, `delete from album_members where user_id = $1`, [USER_C]);
+
 console.log('\n■ 参加の取り消し');
 
 await as(USER_B, `delete from album_members where user_id = $1`, [USER_B]);
@@ -303,7 +343,7 @@ const summary = await db.query(`
 const row = summary.rows[0];
 console.log('  返る値:', row);
 check('tables が 3', Number(row.tables) === 3, String(row.tables));
-check('policies が 10', Number(row.policies) === 10, String(row.policies));
+check('policies が 11', Number(row.policies) === 11, String(row.policies));
 check('storage_policies が 4', Number(row.storage_policies) === 4, String(row.storage_policies));
 check('functions が 5', Number(row.functions) === 5, String(row.functions));
 

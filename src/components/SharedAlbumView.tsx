@@ -8,6 +8,8 @@ import { sharingConfigured } from '../lib/supabase';
 import type { Place } from '../lib/types';
 import type { UrlResolver } from '../lib/media';
 import { formatRange } from '../lib/format';
+import { useLibrary } from '../lib/store';
+import { NamePrompt } from './NamePrompt';
 import { MapView } from './MapView';
 import { Timeline } from './Timeline';
 import { Lightbox } from './Lightbox';
@@ -22,6 +24,9 @@ interface Props {
  * 端末には何も保存せず、その場で読み込んで表示する。
  */
 export function SharedAlbumView({ token, onExit }: Props): JSX.Element {
+  const { settings, updateSettings } = useLibrary();
+  // 名前を一度入れたら覚えておき、次からは聞かない
+  const [name, setName] = useState<string | null>(settings.displayName || null);
   const [album, setAlbum] = useState<ViewedAlbum | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [places, setPlaces] = useState<Map<string, Place | null>>(new Map());
@@ -33,10 +38,11 @@ export function SharedAlbumView({ token, onExit }: Props): JSX.Element {
       setError('このアプリでは共有リンクを開けません。リンクをくれた方に確認してください。');
       return;
     }
+    if (name === null) return;
     let cancelled = false;
     void (async () => {
       try {
-        const loaded = await loadAlbumForViewing(token);
+        const loaded = await loadAlbumForViewing(token, name);
         if (!cancelled) setAlbum(loaded);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : '読み込めませんでした');
@@ -45,7 +51,7 @@ export function SharedAlbumView({ token, onExit }: Props): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, name]);
 
   const photoById = useMemo(
     () => new Map((album?.photos ?? []).map((p) => [p.id, p])),
@@ -109,6 +115,18 @@ export function SharedAlbumView({ token, onExit }: Props): JSX.Element {
     },
     [album],
   );
+
+  if (name === null && sharingConfigured && !error) {
+    return (
+      <NamePrompt
+        action="見る"
+        onSubmit={(entered) => {
+          if (entered) void updateSettings({ displayName: entered });
+          setName(entered);
+        }}
+      />
+    );
+  }
 
   if (error) {
     return (

@@ -116,10 +116,13 @@ export interface Settings {
   spotRadiusMeters: number;
   /** 地名の自動取得（OpenStreetMap へ座標を問い合わせる） */
   reverseGeocode: boolean;
+  /** 共有アルバムに参加したときに、相手側の一覧に出る名前 */
+  displayName: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   spotGapMinutes: 90,
   spotRadiusMeters: 400,
   reverseGeocode: true,
+  displayName: '',
 };
