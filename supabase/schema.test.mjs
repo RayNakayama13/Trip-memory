@@ -218,6 +218,28 @@ check('参加者は自分が上げた写真を消せる', (await as(USER_A, `sel
 await as(USER_B, `delete from shared_albums where id = $1`, [albumId]);
 check('参加者はアルバムごと消せない', (await as(USER_A, `select id from shared_albums`)).rows.length === 1);
 
+console.log('\n■ 送信のやり直し（上書き）');
+
+check('参加者は自分のアルバムの写真ファイルを上書きできる', await (async () => {
+  try {
+    await as(USER_A, `update storage.objects set name = $1 where name = $1`, [pathA]);
+    return true;
+  } catch {
+    return false;
+  }
+})());
+check('参加していない人は上書きできない', await (async () => {
+  await as(USER_B, `delete from album_members where user_id = $1`, [USER_B]);
+  const denied = await (async () => {
+    const before = await as(USER_A, `select name from storage.objects where name = $1`, [pathA]);
+    await as(USER_B, `update storage.objects set name = 'hacked' where name = $1`, [pathA]);
+    const after = await as(USER_A, `select name from storage.objects where name = $1`, [pathA]);
+    return before.rows.length === after.rows.length;
+  })();
+  await as(USER_B, `select join_album('token-kyoto', 'ゆうこ')`);
+  return denied;
+})());
+
 console.log('\n■ サムネイルの扱い');
 
 check('見るだけの人は写真の情報を書き換えられない', await (async () => {
@@ -282,7 +304,7 @@ const row = summary.rows[0];
 console.log('  返る値:', row);
 check('tables が 3', Number(row.tables) === 3, String(row.tables));
 check('policies が 10', Number(row.policies) === 10, String(row.policies));
-check('storage_policies が 3', Number(row.storage_policies) === 3, String(row.storage_policies));
+check('storage_policies が 4', Number(row.storage_policies) === 4, String(row.storage_policies));
 check('functions が 5', Number(row.functions) === 5, String(row.functions));
 
 console.log(`\n結果: ${passed} 件成功 / ${failed} 件失敗\n`);

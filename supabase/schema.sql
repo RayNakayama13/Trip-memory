@@ -318,6 +318,19 @@ create policy trip_photos_insert on storage.objects
     and public.can_edit_album(((storage.foldername(name))[1])::uuid)
   );
 
+-- 送信をやり直したときは上書きになるため、置くのと同じ条件で更新も許す。
+drop policy if exists trip_photos_update on storage.objects;
+create policy trip_photos_update on storage.objects
+  for update
+  using (
+    bucket_id = 'trip-photos'
+    and public.can_edit_album(((storage.foldername(name))[1])::uuid)
+  )
+  with check (
+    bucket_id = 'trip-photos'
+    and public.can_edit_album(((storage.foldername(name))[1])::uuid)
+  );
+
 -- 消せるのは、その写真を上げた本人かアルバムの持ち主。
 -- storage.objects の所有者列は Supabase のバージョンで名前が変わるため、
 -- 自分たちの shared_photos を見て判断する（先にファイル、次に行の順で消すこと）。
@@ -340,7 +353,7 @@ create policy trip_photos_delete on storage.objects
 -- SQL Editor で実行すると、この結果が表として表示される。
 -- スマホなどで一部しか貼り付けられていないと途中で終わり、この表は出ない。
 --
--- 期待する値: tables = 3 / policies = 10 / storage_policies = 3 / functions = 5
+-- 期待する値: tables = 3 / policies = 10 / storage_policies = 4 / functions = 5
 -- ---------------------------------------------------------------------
 
 select
