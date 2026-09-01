@@ -331,3 +331,28 @@ create policy trip_photos_delete on storage.objects
         and (p.uploader_id = auth.uid() or a.owner_id = auth.uid())
     )
   );
+
+-- ---------------------------------------------------------------------
+-- 最後まで適用できたかの確認
+--
+-- SQL Editor で実行すると、この結果が表として表示される。
+-- スマホなどで一部しか貼り付けられていないと途中で終わり、この表は出ない。
+--
+-- 期待する値: tables = 3 / policies = 10 / storage_policies = 3 / functions = 5
+-- ---------------------------------------------------------------------
+
+select
+  (select count(*) from pg_tables
+    where schemaname = 'public'
+      and tablename in ('shared_albums', 'album_members', 'shared_photos')) as tables,
+  (select count(*) from pg_policies
+    where schemaname = 'public'
+      and tablename in ('shared_albums', 'album_members', 'shared_photos')) as policies,
+  (select count(*) from pg_policies
+    where schemaname = 'storage' and policyname like 'trip_photos%') as storage_policies,
+  (select count(*) from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in (
+        'is_album_member', 'can_edit_album', 'add_owner_as_member', 'join_album', 'view_album'
+      )) as functions;

@@ -239,5 +239,33 @@ await as(USER_A, `delete from shared_albums where id = $1`, [albumId]);
 check('持ち主はアルバムを消せる', (await as(USER_A, `select id from shared_albums`)).rows.length === 0);
 check('アルバムを消すと写真の記録も消える', (await as(USER_A, `select id from shared_photos`)).rows.length === 0);
 
+console.log('\n■ 適用の確認クエリ');
+
+// schema.sql の末尾に付けた確認クエリが、期待どおりの数を返すか
+await db.exec('reset role;');
+const summary = await db.query(`
+  select
+    (select count(*) from pg_tables
+      where schemaname = 'public'
+        and tablename in ('shared_albums', 'album_members', 'shared_photos')) as tables,
+    (select count(*) from pg_policies
+      where schemaname = 'public'
+        and tablename in ('shared_albums', 'album_members', 'shared_photos')) as policies,
+    (select count(*) from pg_policies
+      where schemaname = 'storage' and policyname like 'trip_photos%') as storage_policies,
+    (select count(*) from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public'
+        and p.proname in (
+          'is_album_member', 'can_edit_album', 'add_owner_as_member', 'join_album', 'view_album'
+        )) as functions;
+`);
+const row = summary.rows[0];
+console.log('  返る値:', row);
+check('tables が 3', Number(row.tables) === 3, String(row.tables));
+check('policies が 10', Number(row.policies) === 10, String(row.policies));
+check('storage_policies が 3', Number(row.storage_policies) === 3, String(row.storage_policies));
+check('functions が 5', Number(row.functions) === 5, String(row.functions));
+
 console.log(`\n結果: ${passed} 件成功 / ${failed} 件失敗\n`);
 process.exit(failed === 0 ? 0 : 1);
