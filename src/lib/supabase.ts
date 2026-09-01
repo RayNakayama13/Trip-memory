@@ -75,6 +75,16 @@ export async function ensureSignedIn(): Promise<string> {
   return created.session.user.id;
 }
 
+/**
+ * いま signed in している利用者 ID。まだサインインしていなければ null。
+ * 確認のためだけに使うので、ここで新しくサインインはしない。
+ */
+export async function currentUserId(): Promise<string | null> {
+  if (!sharingConfigured) return null;
+  const { data } = await getSupabase().auth.getSession();
+  return data.session?.user.id ?? null;
+}
+
 /** 招待リンクに載せる合言葉を作る。 */
 export function makeInviteToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(18));

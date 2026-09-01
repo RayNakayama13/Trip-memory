@@ -57,6 +57,15 @@ end $$;
 alter table public.album_members
   add column if not exists revoked_at timestamptz;
 
+-- role を後から足したため、それ以前からある行はすべて既定値の editor になっている。
+-- アルバムを作った本人は owner に直す。
+update public.album_members m
+set role = 'owner'
+from public.shared_albums a
+where a.id = m.album_id
+  and a.owner_id = m.user_id
+  and m.role <> 'owner';
+
 create table if not exists public.shared_photos (
   -- 端末側と同じ内容ハッシュ。同じ写真を二重に上げないための ID
   id text not null,

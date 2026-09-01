@@ -2,15 +2,21 @@ import { useEffect, useState } from 'react';
 import { useLibrary } from '../lib/store';
 import { storageEstimate } from '../lib/db';
 import { formatBytes } from '../lib/format';
+import { currentUserId, sharingConfigured } from '../lib/supabase';
 
 /** まとめ方の調整と、保存データの管理。 */
 export function SettingsPanel({ onClose }: { onClose: () => void }): JSX.Element {
   const { settings, updateSettings, photos, removeAll } = useLibrary();
   const [usage, setUsage] = useState<{ usage: number; quota: number } | null>(null);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
 
   useEffect(() => {
     void storageEstimate().then(setUsage);
   }, [photos.length]);
+
+  useEffect(() => {
+    void currentUserId().then(setDeviceId);
+  }, []);
 
   return (
     <div className="container">
@@ -96,6 +102,25 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): JSX.Element
             onChange={(e) => void updateSettings({ displayName: e.target.value })}
           />
         </label>
+
+        {sharingConfigured && (
+          <div className="field">
+            <span className="field__label">この端末の ID</span>
+            <span className="field__hint">
+              共有アルバムで、どの端末からの操作かを見分けるための番号です。
+              アルバムを作った端末が持ち主になります。
+              {deviceId
+                ? ' この端末のデータを消すと ID も変わり、いま持っている共有アルバムを管理できなくなります。'
+                : ' まだ共有機能を使っていないため、発行されていません。'}
+            </span>
+            <input
+              className="input"
+              readOnly
+              value={deviceId ?? '（未発行）'}
+              onFocus={(e) => e.target.select()}
+            />
+          </div>
+        )}
       </div>
 
       <div className="section-title">
