@@ -100,8 +100,6 @@ export interface Edit {
 }
 
 export interface Settings {
-  /** これ以上の間隔が空いたら別のアルバムに振り分ける（時間） */
-  tripGapHours: number;
   /** これ以上の間隔が空いたら別のスポットとみなす（分） */
   spotGapMinutes: number;
   /** これ以上離れたら別のスポットとみなす（メートル） */
@@ -111,7 +109,6 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  tripGapHours: 24,
   spotGapMinutes: 90,
   spotRadiusMeters: 400,
   reverseGeocode: true,

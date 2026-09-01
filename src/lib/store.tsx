@@ -11,7 +11,7 @@ import {
 import type { Album, AlbumView, Edit, Photo, Place, Settings } from './types';
 import { DEFAULT_SETTINGS } from './types';
 import * as db from './db';
-import { assignToAlbums, attachPlaces, buildAlbumView, type AlbumRange } from './cluster';
+import { attachPlaces, buildAlbumView, groupByDateGap } from './cluster';
 import { placeKey, reverseGeocode } from './geocode';
 import { importFiles, type ImportProgress } from './importer';
 import { releasePhotoUrls } from './media';
@@ -22,6 +22,9 @@ import type { SyncProgress, SyncResult } from './sharing';
 /** どのアルバムにも入っていない写真をまとめて見せるための、実体のないアルバム */
 export const UNSORTED_ID = '__unsorted__';
 
+/** 旧バージョンのデータを移すときだけ使う、旅の区切り（時間） */
+const LEGACY_TRIP_GAP_HOURS = 24;
+
 interface LibraryState {
   ready: boolean;
   photos: Photo[];
@@ -31,8 +34,8 @@ interface LibraryState {
   settings: Settings;
   importing: ImportProgress | null;
   geocodingLeft: number;
-  /** files を取り込む。albumId を渡すとそのアルバムに入れ、省略すると日付で自動振り分けする */
-  addFiles: (files: File[], albumId?: string) => Promise<ImportProgress | null>;
+  /** files を取り込んで、指定したアルバムに入れる */
+  addFiles: (files: File[], albumId: string) => Promise<ImportProgress | null>;
   createAlbum: (title?: string) => Promise<string>;
   updateAlbum: (id: string, patch: Partial<Pick<Album, 'title' | 'note' | 'coverPhotoId'>>) => Promise<void>;
   /** アルバムを削除する。withPhotos が true なら中の写真ごと消す */
@@ -115,7 +118,6 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
         const { photos: nextPhotos, albums: nextAlbums } = await migrateToAlbums(
           storedPhotos,
           editMap,
-          storedSettings,
         );
         setPhotos(nextPhotos);
         setAlbums(nextAlbums);
@@ -337,30 +339,26 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
   );
 
   const addFiles = useCallback(
-    async (files: File[], albumId?: string) => {
+    async (files: File[], albumId: string) => {
       if (files.length === 0) return null;
       // 端末に写真を貯めるので、消されにくい保存領域を一度だけ要求しておく
       void db.requestPersistentStorage();
       const result = await importFiles(files, setImporting);
       setImporting(null);
 
-      if (result.addedIds.length > 0) {
-        if (albumId && albumId !== UNSORTED_ID) {
-          await db.setPhotosAlbum(result.addedIds, albumId);
-          const target = albums.find((a) => a.id === albumId);
-          if (target?.remoteId) {
-            await reloadPhotos();
-            await runSync(target).catch(() => undefined);
-          }
-        } else {
-          await autoAssign(result.addedIds, albums, photos, settings, createAlbum);
-          setAlbums(await db.allAlbums());
+      // どの旅の写真かは利用者が決める。取り込み先のアルバムに必ず入れる。
+      if (result.addedIds.length > 0 && albumId !== UNSORTED_ID) {
+        await db.setPhotosAlbum(result.addedIds, albumId);
+        const target = albums.find((a) => a.id === albumId);
+        if (target?.remoteId) {
+          await reloadPhotos();
+          await runSync(target).catch(() => undefined);
         }
       }
       await reloadPhotos();
       return result;
     },
-    [albums, photos, settings, createAlbum, reloadPhotos, runSync],
+    [albums, reloadPhotos, runSync],
   );
 
   const removePhoto = useCallback(
@@ -438,43 +436,6 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
 }
 
-/** 既存アルバムの期間を、振り分け用の形にして返す。 */
-function rangesOf(albums: Album[], photos: Photo[]): AlbumRange[] {
-  return albums.map((album) => {
-    const times = photos
-      .filter((p) => p.albumId === album.id)
-      .map((p) => p.takenAt)
-      .filter((t): t is number => t !== null);
-    return {
-      albumId: album.id,
-      startAt: times.length > 0 ? Math.min(...times) : 0,
-      endAt: times.length > 0 ? Math.max(...times) : 0,
-    };
-  });
-}
-
-/** 取り込んだ写真を、日付の近い既存アルバムか、新しく作るアルバムへ振り分ける。 */
-async function autoAssign(
-  addedIds: string[],
-  albums: Album[],
-  knownPhotos: Photo[],
-  settings: Settings,
-  createAlbum: (title?: string) => Promise<string>,
-): Promise<void> {
-  const all = await db.allPhotos();
-  const added = all.filter((p) => addedIds.includes(p.id));
-  const assignment = assignToAlbums(added, rangesOf(albums, knownPhotos), settings);
-
-  for (const [albumId, ids] of assignment.toExisting) {
-    await db.setPhotosAlbum(ids, albumId);
-  }
-  for (const group of assignment.newGroups) {
-    const albumId = await createAlbum();
-    await db.setPhotosAlbum(group, albumId);
-  }
-  // 撮影日時が読み取れなかった写真は未整理のまま残し、利用者が移せるようにする
-}
-
 /**
  * アルバム機能を入れる前の写真を、アルバムへ移す（初回起動時に一度だけ）。
  * 以前のバージョンで付けた旅の名前とメモは、同じ ID 規則で引き継ぐ。
@@ -482,14 +443,15 @@ async function autoAssign(
 async function migrateToAlbums(
   storedPhotos: Photo[],
   edits: Map<string, Edit>,
-  settings: Settings,
 ): Promise<{ photos: Photo[]; albums: Album[] }> {
   const unassigned = storedPhotos.filter((p) => !p.albumId);
   const created: Album[] = [];
 
   if (unassigned.length > 0) {
-    const assignment = assignToAlbums(unassigned, [], settings);
-    for (const group of assignment.newGroups) {
+    // 旧バージョンは日付で旅を区切っていたので、そのときと同じ区切りで移す。
+    // 新しく取り込む写真は利用者がアルバムを選ぶので、ここだけの処理。
+    const groups = groupByDateGap(unassigned, LEGACY_TRIP_GAP_HOURS);
+    for (const group of groups) {
       // 旧バージョンの旅 ID は先頭写真から作っていたので、同じ規則で名前を探す
       const previous = edits.get(`trip:t_${group[0]}`);
       const album = makeAlbum(previous?.title?.trim() ?? '');

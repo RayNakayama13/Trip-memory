@@ -140,6 +140,11 @@ img {
   background: var(--accent-strong);
 }
 
+.btn--lg {
+  padding: 13px 26px;
+  font-size: 15.5px;
+}
+
 .btn--ghost {
   background: transparent;
   border-color: transparent;

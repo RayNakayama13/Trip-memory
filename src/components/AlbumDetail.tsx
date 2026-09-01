@@ -178,7 +178,9 @@ export function AlbumDetail({ view, onBack }: Props): JSX.Element {
       {view.photoIds.length === 0 ? (
         <div className="empty">
           <div className="empty__emoji">📷</div>
-          このアルバムはまだ空です。下から写真を追加してください。
+          この旅の写真をまだ入れていません。
+          <br />
+          <span className="faint">下から写真を追加すると、地図と時系列で振り返れます。</span>
         </div>
       ) : (
         <>
@@ -219,12 +221,7 @@ export function AlbumDetail({ view, onBack }: Props): JSX.Element {
       )}
 
       <div style={{ margin: '28px 0 10px' }}>
-        <Uploader compact albumId={unsorted ? undefined : album.id} />
-        {!unsorted && (
-          <p className="faint" style={{ marginTop: 8, textAlign: 'center' }}>
-            ここから追加した写真は、日付にかかわらずこのアルバムに入ります。
-          </p>
-        )}
+        {!unsorted && <Uploader compact={view.photoIds.length > 0} albumId={album.id} />}
       </div>
 
       {moving && (

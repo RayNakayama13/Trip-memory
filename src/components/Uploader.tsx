@@ -3,8 +3,8 @@ import { useLibrary } from '../lib/store';
 
 interface Props {
   compact?: boolean;
-  /** 取り込んだ写真を入れるアルバム。省略すると撮影日から自動で振り分ける */
-  albumId?: string;
+  /** 取り込んだ写真を入れるアルバム。どの旅の写真かは利用者が決める */
+  albumId: string;
 }
 
 /** 写真をドラッグ&ドロップ、またはファイル選択で取り込むためのゾーン。 */
@@ -66,12 +66,10 @@ export function Uploader({ compact = false, albumId }: Props): JSX.Element {
       ) : (
         <>
           <h3 className="dropzone__title">
-            {compact ? '写真を追加する' : '写真をここにドロップ'}
+            {compact ? 'この旅の写真を追加する' : '写真をここにドロップ'}
           </h3>
           <p className="dropzone__hint">
-            {albumId
-              ? 'JPEG・PNG・HEIC に対応。このアルバムに追加されます。'
-              : 'JPEG・PNG・HEIC に対応。撮影日時と位置情報から、旅ごとに自動でまとめます。'}
+            JPEG・PNG・HEIC に対応。ここに入れた写真が、この旅の写真になります。
           </p>
           <button type="button" className="btn btn--primary" onClick={() => inputRef.current?.click()}>
             写真を選ぶ

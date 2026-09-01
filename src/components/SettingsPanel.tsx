@@ -21,25 +21,12 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): JSX.Element
         </button>
       </div>
 
-      <div className="card settings">
-        <div className="field">
-          <span className="field__label">旅の区切り</span>
-          <span className="field__hint">
-            写真の間隔がこれ以上空いたら、別の旅として分けます。
-          </span>
-          <div className="field__row">
-            <input
-              type="range"
-              min={6}
-              max={96}
-              step={6}
-              value={settings.tripGapHours}
-              onChange={(e) => void updateSettings({ tripGapHours: Number(e.target.value) })}
-            />
-            <span className="field__value">{settings.tripGapHours} 時間</span>
-          </div>
-        </div>
+      <p className="faint" style={{ marginTop: -6 }}>
+        旅の区切りはアルバムで決まります。ここでは、アルバムの中を
+        「立ち寄り先」に分ける細かさを調整できます。
+      </p>
 
+      <div className="card settings">
         <div className="field">
           <span className="field__label">立ち寄り先の区切り（時間）</span>
           <span className="field__hint">

@@ -152,73 +152,30 @@ export function attachPlaces(
   });
 }
 
-/** 振り分け先のアルバムと、その期間。 */
-export interface AlbumRange {
-  albumId: string;
-  startAt: number;
-  endAt: number;
-}
-
-export interface Assignment {
-  /** 既存アルバムに入れる写真 */
-  toExisting: Map<string, string[]>;
-  /** 新しく作るアルバムごとの写真（撮影順） */
-  newGroups: string[][];
-  /** 撮影日時が読み取れず、振り分けられなかった写真 */
-  undated: string[];
-}
-
 /**
- * 取り込んだ写真を、撮影日時の近さでアルバムへ振り分ける。
+ * 写真を撮影日時の空きで区切ってまとめる。
  *
- * 同じ旅の写真を後から追加したときに新しいアルバムができてしまわないよう、
- * まず既存アルバムの期間に収まるかを見て、収まらないものだけを新しい塊にする。
+ * 旅の区切りは利用者がアルバムを作って決めるので、通常の取り込みでは使わない。
+ * アルバム機能を入れる前のデータを移すときにだけ呼ぶ。
  */
-export function assignToAlbums(
-  photos: Photo[],
-  albumRanges: AlbumRange[],
-  settings: Settings,
-): Assignment {
-  const gapMs = settings.tripGapHours * 3600_000;
-  const toExisting = new Map<string, string[]>();
-  const newGroups: string[][] = [];
-  const undated: string[] = [];
+export function groupByDateGap(photos: Photo[], gapHours: number): string[][] {
+  const gapMs = gapHours * 3600_000;
+  const dated = photos.filter((p) => p.takenAt !== null).sort(byTakenAt);
+  const undated = photos.filter((p) => p.takenAt === null);
 
-  // 割り当てながら期間が広がるので、作業用にコピーして持つ
-  const ranges = albumRanges.map((r) => ({ ...r }));
-  const leftovers: Photo[] = [];
-
-  for (const photo of [...photos].sort(byTakenAt)) {
-    if (photo.takenAt === null) {
-      undated.push(photo.id);
-      continue;
-    }
-    const takenAt = photo.takenAt;
-    const match = ranges.find(
-      (r) => r.startAt > 0 && takenAt >= r.startAt - gapMs && takenAt <= r.endAt + gapMs,
-    );
-    if (match) {
-      const list = toExisting.get(match.albumId) ?? [];
-      list.push(photo.id);
-      toExisting.set(match.albumId, list);
-      match.startAt = Math.min(match.startAt, takenAt);
-      match.endAt = Math.max(match.endAt, takenAt);
-    } else {
-      leftovers.push(photo);
-    }
-  }
-
-  // どの既存アルバムにも入らなかった写真を、間隔で区切って新しいアルバムにする
+  const groups: string[][] = [];
   let current: Photo[] = [];
-  for (const photo of leftovers) {
+  for (const photo of dated) {
     const previous = current[current.length - 1];
     if (previous && (photo.takenAt as number) - (previous.takenAt as number) > gapMs) {
-      newGroups.push(current.map((p) => p.id));
+      groups.push(current.map((p) => p.id));
       current = [];
     }
     current.push(photo);
   }
-  if (current.length > 0) newGroups.push(current.map((p) => p.id));
+  if (current.length > 0) groups.push(current.map((p) => p.id));
 
-  return { toExisting, newGroups, undated };
+  // 撮影日時が読み取れなかった写真は、まとめてひとつの塊にする
+  if (undated.length > 0) groups.push(undated.map((p) => p.id));
+  return groups;
 }
