@@ -90,7 +90,8 @@ export async function joinByToken(token: string): Promise<{
 
   const { data: joined, error } = await supabase.rpc('join_album', { token, display_name: '' });
   if (error || !joined) {
-    throw new Error('この招待リンクは使えませんでした。リンクが正しいか確認してください。');
+    const reason = error?.message ? `：${error.message}` : '';
+    throw new Error(`この招待リンクは使えませんでした${reason}`);
   }
 
   const remoteId = joined as string;
@@ -131,7 +132,8 @@ export async function loadAlbumForViewing(viewToken: string): Promise<ViewedAlbu
 
   const { data: albumId, error: joinError } = await supabase.rpc('view_album', { token: viewToken });
   if (joinError || !albumId) {
-    throw new Error('この共有リンクは使えませんでした。リンクが正しいか確認してください。');
+    const reason = joinError?.message ? `：${joinError.message}` : '';
+    throw new Error(`この共有リンクは使えませんでした${reason}`);
   }
 
   const [{ data: album, error: albumError }, { data: rows, error: rowsError }] = await Promise.all([

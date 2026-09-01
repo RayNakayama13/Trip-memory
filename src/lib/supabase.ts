@@ -35,8 +35,11 @@ export async function ensureSignedIn(): Promise<string> {
 
   const { data: created, error } = await supabase.auth.signInAnonymously();
   if (error || !created.user) {
+    // 原因の切り分けができるよう、Supabase が返した理由もそのまま見せる
+    const reason = error?.message ? `（${error.message}）` : '';
     throw new Error(
-      '共有用のサインインに失敗しました。Supabase の Authentication で匿名サインインが有効か確認してください。',
+      `共有用のサインインに失敗しました${reason}。` +
+        'Supabase の Authentication > Sign In / Providers で「Anonymous sign-ins」を有効にして保存してください。',
     );
   }
   return created.user.id;
