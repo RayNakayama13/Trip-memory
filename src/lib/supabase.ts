@@ -53,7 +53,16 @@ export async function ensureSignedIn(): Promise<string> {
   if (data.session?.user.id) return data.session.user.id;
 
   const { data: created, error } = await supabase.auth.signInAnonymously();
-  if (error || !created.user) {
+  // 利用者だけ返ってきてセッションが無いと、以降のリクエストが未サインイン扱いになり
+  // 「row-level security policy に反する」で弾かれる。ここで気づけるようにする。
+  if (!error && created.user && !created.session) {
+    throw new Error(
+      'サインインはできましたが、認証情報（セッション）が発行されませんでした。' +
+        'Supabase の Authentication > Sign In / Providers で「Anonymous sign-ins」の設定と、' +
+        'API キーがこのプロジェクトのもの（anon / publishable）か確認してください。',
+    );
+  }
+  if (error || !created.session?.user.id) {
     // 原因の切り分けができるよう、Supabase が返した理由もそのまま見せる
     // 接続先も添える。設定を貼り間違えたときに、ここを見れば分かる
     const reason = error?.message ? `（${error.message}）` : '';
@@ -63,7 +72,7 @@ export async function ensureSignedIn(): Promise<string> {
         '有効か、接続先が自分のプロジェクトの URL と一致しているか確認してください。',
     );
   }
-  return created.user.id;
+  return created.session.user.id;
 }
 
 /** 招待リンクに載せる合言葉を作る。 */

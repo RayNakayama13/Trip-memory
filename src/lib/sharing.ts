@@ -71,7 +71,17 @@ export async function createSharedAlbum(
     .select('id')
     .single();
 
-  if (error || !data) throw new Error(`共有の開始に失敗しました：${error?.message ?? '不明なエラー'}`);
+  if (error || !data) {
+    // 権限で弾かれたときに原因を切り分けられるよう、サーバーが誰として扱っているかを添える
+    const { data: who } = await supabase.auth.getUser();
+    const seen = who?.user?.id
+      ? `サーバーが認識している利用者 ${who.user.id.slice(0, 8)}…`
+      : 'サーバーは未サインインとして扱っています';
+    throw new Error(
+      `共有の開始に失敗しました：${error?.message ?? '不明なエラー'}` +
+        `（送信した owner ${userId.slice(0, 8)}… / ${seen}）`,
+    );
+  }
   const remoteId = data.id as string | undefined;
   if (!remoteId) throw new Error('共有の開始に失敗しました：アルバム ID を受け取れませんでした');
   return { remoteId, inviteToken, viewToken };
