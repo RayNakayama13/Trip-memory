@@ -109,6 +109,24 @@ const albumRow = await as(USER_A, `select id from shared_albums where invite_tok
 const albumId = albumRow.rows[0]?.id;
 check('作った本人はアルバムを読める', albumRow.rows.length === 1);
 
+// アプリは insert ... returning id で作るため、登録と同時に閲覧の許可も評価される。
+// 参加者の登録は作成直後に走るので、持ち主を条件に入れておかないとここで弾かれる。
+check('作成と同時に ID を受け取れる（insert ... returning）', await (async () => {
+  try {
+    const created = await as(
+      USER_A,
+      `insert into shared_albums (title, owner_id, invite_token, view_token)
+       values ('returning の確認', $1, 'token-returning', 'view-returning') returning id`,
+      [USER_A],
+    );
+    const newId = created.rows[0]?.id;
+    if (newId) await as(USER_A, `delete from shared_albums where id = $1`, [newId]);
+    return Boolean(newId);
+  } catch {
+    return false;
+  }
+})());
+
 const membersOfA = await as(USER_A, `select user_id, role from album_members`);
 check('作った本人が自動で参加者になる', membersOfA.rows.length === 1 && membersOfA.rows[0].user_id === USER_A);
 check('作った本人の立場は owner', membersOfA.rows[0]?.role === 'owner');

@@ -217,9 +217,11 @@ alter table public.shared_photos enable row level security;
 
 -- アルバム: 参加者だけが読める。作成は自分が持ち主のときだけ。
 -- 名前とメモを直せるのは owner と editor。削除は持ち主だけ。
+-- 持ち主は常に読める。参加者かどうかの判定だけにすると、アルバムを作った直後
+-- （参加者の登録が済む前）に insert ... returning が閲覧の許可で弾かれてしまう。
 drop policy if exists shared_albums_select on public.shared_albums;
 create policy shared_albums_select on public.shared_albums
-  for select using (public.is_album_member(id));
+  for select using (owner_id = auth.uid() or public.is_album_member(id));
 
 drop policy if exists shared_albums_insert on public.shared_albums;
 create policy shared_albums_insert on public.shared_albums
