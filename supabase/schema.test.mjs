@@ -104,13 +104,14 @@ async function denied(userId, sql, params = []) {
 
 console.log('\n■ アルバムの作成と参加');
 
-await as(USER_A, `insert into shared_albums (title, owner_id, invite_token) values ('京都旅行', $1, 'token-kyoto')`, [USER_A]);
+await as(USER_A, `insert into shared_albums (title, owner_id, invite_token, view_token) values ('京都旅行', $1, 'token-kyoto', 'token-view')`, [USER_A]);
 const albumRow = await as(USER_A, `select id from shared_albums where invite_token = 'token-kyoto'`);
 const albumId = albumRow.rows[0]?.id;
 check('作った本人はアルバムを読める', albumRow.rows.length === 1);
 
-const membersOfA = await as(USER_A, `select user_id from album_members`);
+const membersOfA = await as(USER_A, `select user_id, role from album_members`);
 check('作った本人が自動で参加者になる', membersOfA.rows.length === 1 && membersOfA.rows[0].user_id === USER_A);
+check('作った本人の立場は owner', membersOfA.rows[0]?.role === 'owner');
 
 const pathA = `${albumId}/photo-a.jpg`;
 const pathB = `${albumId}/photo-b.jpg`;
@@ -150,6 +151,40 @@ check('参加者は自分の写真を追加できる', (await as(USER_B, `select
 check('他人になりすまして写真を追加できない',
   await denied(USER_B, `insert into shared_photos (id, album_id, uploader_id, storage_path) values ('fake', $1, $2, 'f')`, [albumId, USER_A]));
 
+console.log('\n■ 見るだけのリンク');
+
+check('見るだけの合言葉では、写真を足せるリンクとして参加できない',
+  await denied(USER_C, `select join_album('token-view')`));
+check('写真を足せる合言葉では、見るだけとして参加できない',
+  await denied(USER_C, `select view_album('token-kyoto')`));
+
+await as(USER_C, `select view_album('token-view')`);
+check('見るだけのリンクで参加できる', (await as(USER_C, `select id from shared_albums`)).rows.length === 1);
+check('立場は viewer になる',
+  (await as(USER_C, `select role from album_members where user_id = $1`, [USER_C])).rows[0]?.role === 'viewer');
+check('見るだけの人も写真を見られる', (await as(USER_C, `select id from shared_photos`)).rows.length === 2);
+check('見るだけの人も写真ファイルを読める', (await as(USER_C, `select name from storage.objects`)).rows.length === 2);
+
+check('見るだけの人は写真を追加できない',
+  await denied(USER_C, `insert into shared_photos (id, album_id, uploader_id, storage_path) values ('c1', $1, $2, $3)`,
+    [albumId, USER_C, `${albumId}/c1.jpg`]));
+check('見るだけの人は写真ファイルを置けない',
+  await denied(USER_C, `insert into storage.objects (bucket_id, name) values ('trip-photos', $1)`, [`${albumId}/c1.jpg`]));
+
+await as(USER_C, `update shared_albums set title = '乗っ取り' where id = $1`, [albumId]);
+check('見るだけの人はアルバム名を書き換えられない',
+  (await as(USER_A, `select title from shared_albums where id = $1`, [albumId])).rows[0].title !== '乗っ取り');
+
+await as(USER_C, `delete from shared_photos where album_id = $1`, [albumId]);
+check('見るだけの人は写真を消せない', (await as(USER_A, `select id from shared_photos`)).rows.length === 2);
+
+await as(USER_C, `select view_album('token-view')`);
+check('もう一度リンクを踏んでも立場は変わらない',
+  (await as(USER_C, `select role from album_members where user_id = $1`, [USER_C])).rows[0]?.role === 'viewer');
+
+// 以降のテストのために、いったん抜けてもらう
+await as(USER_C, `delete from album_members where user_id = $1`, [USER_C]);
+
 console.log('\n■ 共同編集と削除の範囲');
 
 await as(USER_B, `update shared_albums set title = '京都ふたり旅' where id = $1`, [albumId]);
@@ -165,12 +200,38 @@ check('参加者は自分が上げた写真を消せる', (await as(USER_A, `sel
 await as(USER_B, `delete from shared_albums where id = $1`, [albumId]);
 check('参加者はアルバムごと消せない', (await as(USER_A, `select id from shared_albums`)).rows.length === 1);
 
+console.log('\n■ サムネイルの扱い');
+
+check('見るだけの人は写真の情報を書き換えられない', await (async () => {
+  await as(USER_C, `select view_album('token-view')`);
+  await as(USER_C, `update shared_photos set file_name = 'x' where album_id = $1`, [albumId]);
+  const row = await as(USER_A, `select file_name from shared_photos where id = 'photo-a' and album_id = $1`, [albumId]);
+  await as(USER_C, `delete from album_members where user_id = $1`, [USER_C]);
+  return row.rows[0]?.file_name !== 'x';
+})());
+
+const thumbPath = `${albumId}/photo-a_t.jpg`;
+await as(USER_A, `update shared_photos set thumb_path = $1 where id = 'photo-a' and album_id = $2`, [thumbPath, albumId]);
+await as(USER_A, `insert into storage.objects (bucket_id, name) values ('trip-photos', $1)`, [thumbPath]);
+await as(USER_C, `select view_album('token-view')`);
+check('見るだけの人はサムネイルも読める',
+  (await as(USER_C, `select name from storage.objects where name = $1`, [thumbPath])).rows.length === 1);
+check('見るだけの人はサムネイルを消せない',
+  ((await as(USER_C, `delete from storage.objects where name = $1`, [thumbPath])), 
+   (await as(USER_A, `select name from storage.objects where name = $1`, [thumbPath])).rows.length === 1));
+await as(USER_A, `delete from storage.objects where name = $1`, [thumbPath]);
+check('持ち主はサムネイルを消せる',
+  (await as(USER_A, `select name from storage.objects where name = $1`, [thumbPath])).rows.length === 0);
+await as(USER_C, `delete from album_members where user_id = $1`, [USER_C]);
+
 console.log('\n■ 参加の取り消し');
 
 await as(USER_B, `delete from album_members where user_id = $1`, [USER_B]);
 check('自分の参加は自分で取り消せる', (await as(USER_B, `select id from shared_albums`)).rows.length === 0);
 
 await as(USER_C, `select join_album('token-kyoto', 'たろう')`);
+check('招待リンクからの参加は editor', 
+  (await as(USER_C, `select role from album_members where user_id = $1`, [USER_C])).rows[0]?.role === 'editor');
 await as(USER_A, `delete from album_members where album_id = $1 and user_id = $2`, [albumId, USER_C]);
 check('持ち主は参加者を外せる', (await as(USER_C, `select id from shared_albums`)).rows.length === 0);
 

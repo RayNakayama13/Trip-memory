@@ -1,29 +1,29 @@
-import type { Album, AlbumView, Photo, Place, Settings, Spot } from './types';
+import type { Album, AlbumView, PhotoMeta, Place, Settings, Spot } from './types';
 import { centroid, distanceMeters, type LatLon } from './geo';
 import { guessActivity } from './activity';
 
 /** 位置情報を持つ写真だけを LatLon にして返す。 */
-function coordsOf(photos: Photo[]): LatLon[] {
+function coordsOf(photos: PhotoMeta[]): LatLon[] {
   return photos
-    .filter((p): p is Photo & { lat: number; lon: number } => p.lat !== null && p.lon !== null)
+    .filter((p): p is PhotoMeta & { lat: number; lon: number } => p.lat !== null && p.lon !== null)
     .map((p) => ({ lat: p.lat, lon: p.lon }));
 }
 
-function byTakenAt(a: Photo, b: Photo): number {
+function byTakenAt(a: PhotoMeta, b: PhotoMeta): number {
   return (a.takenAt ?? 0) - (b.takenAt ?? 0);
 }
 
-function timeRange(photos: Photo[]): { startAt: number; endAt: number } {
+function timeRange(photos: PhotoMeta[]): { startAt: number; endAt: number } {
   const times = photos.map((p) => p.takenAt).filter((t): t is number => t !== null);
   if (times.length === 0) return { startAt: 0, endAt: 0 };
   return { startAt: Math.min(...times), endAt: Math.max(...times) };
 }
 
 /** アルバムの中を、時間の空きと移動距離で「立ち寄りスポット」に切り分ける。 */
-function splitSpots(photos: Photo[], settings: Settings): Photo[][] {
+function splitSpots(photos: PhotoMeta[], settings: Settings): PhotoMeta[][] {
   const gapMs = settings.spotGapMinutes * 60_000;
-  const groups: Photo[][] = [];
-  let current: Photo[] = [];
+  const groups: PhotoMeta[][] = [];
+  let current: PhotoMeta[] = [];
   let anchor: LatLon | null = null;
 
   for (const photo of photos) {
@@ -53,7 +53,7 @@ function splitSpots(photos: Photo[], settings: Settings): Photo[][] {
 }
 
 /** 写真の中から表紙にふさわしい 1 枚（横長で、なるべく旅の中盤のもの）を選ぶ。 */
-function pickCover(photos: Photo[]): string | null {
+function pickCover(photos: PhotoMeta[]): string | null {
   if (photos.length === 0) return null;
   const landscape = photos.filter((p) => p.width >= p.height);
   const pool = landscape.length > 0 ? landscape : photos;
@@ -64,7 +64,7 @@ function pickCover(photos: Photo[]): string | null {
  * アルバム 1 冊ぶんの表示内容を組み立てる。
  * この時点では地名が未取得なので place は null で、あとから attachPlaces で埋める。
  */
-export function buildAlbumView(album: Album, photos: Photo[], settings: Settings): AlbumView {
+export function buildAlbumView(album: Album, photos: PhotoMeta[], settings: Settings): AlbumView {
   const sorted = [...photos].sort(byTakenAt);
   const spots: Spot[] = splitSpots(sorted, settings).map((spotPhotos) => {
     const center = centroid(coordsOf(spotPhotos));
@@ -158,13 +158,13 @@ export function attachPlaces(
  * 旅の区切りは利用者がアルバムを作って決めるので、通常の取り込みでは使わない。
  * アルバム機能を入れる前のデータを移すときにだけ呼ぶ。
  */
-export function groupByDateGap(photos: Photo[], gapHours: number): string[][] {
+export function groupByDateGap(photos: PhotoMeta[], gapHours: number): string[][] {
   const gapMs = gapHours * 3600_000;
   const dated = photos.filter((p) => p.takenAt !== null).sort(byTakenAt);
   const undated = photos.filter((p) => p.takenAt === null);
 
   const groups: string[][] = [];
-  let current: Photo[] = [];
+  let current: PhotoMeta[] = [];
   for (const photo of dated) {
     const previous = current[current.length - 1];
     if (previous && (photo.takenAt as number) - (previous.takenAt as number) > gapMs) {

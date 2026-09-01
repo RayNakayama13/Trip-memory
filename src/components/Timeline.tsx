@@ -1,23 +1,24 @@
 import { useEffect, useRef } from 'react';
-import type { AlbumView, Photo, Spot } from '../lib/types';
+import type { AlbumView, PhotoMeta, Spot } from '../lib/types';
 import { dayKey, formatDate, formatDuration, formatTime } from '../lib/format';
-import { photoUrl } from '../lib/media';
+import type { UrlResolver } from '../lib/media';
 import { EditableText } from './EditableText';
 
 interface Props {
   view: AlbumView;
-  photoById: Map<string, Photo>;
+  photoById: Map<string, PhotoMeta>;
+  urlOf: UrlResolver;
   spotTitle: (spot: Spot, index: number) => string;
   noteOf: (key: string) => string;
-  onSaveTitle: (spot: Spot, title: string) => void;
-  onSaveNote: (spot: Spot, note: string) => void;
   activeSpotId: string | null;
   /** どこから選ばれたか。地図から選ばれたときだけ時系列側をスクロールする。 */
   activeSource: 'map' | 'timeline' | null;
   onActivateSpot: (spotId: string) => void;
   onOpenPhoto: (photoId: string) => void;
-  /** このスポットの写真をまとめて別のアルバムへ移す */
-  onMoveSpot: (spot: Spot) => void;
+  /** 共有リンクから見ているときは編集できないので、これらは渡さない */
+  onSaveTitle?: (spot: Spot, title: string) => void;
+  onSaveNote?: (spot: Spot, note: string) => void;
+  onMoveSpot?: (spot: Spot) => void;
 }
 
 /** アルバムの写真を「日 → 立ち寄りスポット」の順に並べた時系列ビュー。 */
@@ -66,6 +67,7 @@ function SpotSection({
   spot,
   view,
   photoById,
+  urlOf,
   spotTitle,
   noteOf,
   onSaveTitle,
@@ -92,7 +94,7 @@ function SpotSection({
   const note = noteOf(`spot:${spot.id}`);
   const photos = spot.photoIds
     .map((id) => photoById.get(id))
-    .filter((p): p is Photo => p !== undefined);
+    .filter((p): p is PhotoMeta => p !== undefined);
 
   return (
     <div ref={ref} className={`spot ${active ? 'spot--active' : ''}`}>
@@ -109,22 +111,28 @@ function SpotSection({
           📍 {index + 1}
         </button>
         <span className="spot__title">
-          <EditableText
-            value={spotTitle(spot, index)}
-            placeholder="場所の名前"
-            ariaLabel="スポット名"
-            onSave={(value) => onSaveTitle(spot, value)}
-          />
+          {onSaveTitle ? (
+            <EditableText
+              value={spotTitle(spot, index)}
+              placeholder="場所の名前"
+              ariaLabel="スポット名"
+              onSave={(value) => onSaveTitle(spot, value)}
+            />
+          ) : (
+            spotTitle(spot, index)
+          )}
         </span>
         <span className="tag">{spot.activity}</span>
-        <button
-          type="button"
-          className="btn btn--ghost spot__move"
-          onClick={() => onMoveSpot(spot)}
-          title="このスポットの写真を別のアルバムへ移す"
-        >
-          アルバムを移す
-        </button>
+        {onMoveSpot && (
+          <button
+            type="button"
+            className="btn btn--ghost spot__move"
+            onClick={() => onMoveSpot(spot)}
+            title="このスポットの写真を別のアルバムへ移す"
+          >
+            アルバムを移す
+          </button>
+        )}
       </div>
 
       <div className="spot__meta">
@@ -151,32 +159,36 @@ function SpotSection({
             onClick={() => onOpenPhoto(photo.id)}
             title={photo.takenAt !== null ? formatTime(photo.takenAt) : photo.fileName}
           >
-            <img src={photoUrl(photo, 'thumb')} alt={photo.fileName} loading="lazy" />
+            <img src={urlOf(photo, 'thumb')} alt={photo.fileName} loading="lazy" />
           </button>
         ))}
       </div>
 
-      <div style={{ marginTop: 10 }}>
-        {note ? (
-          <div className="note">
+      {onSaveNote ? (
+        <div style={{ marginTop: 10 }}>
+          {note ? (
+            <div className="note">
+              <EditableText
+                value={note}
+                placeholder="メモを書く"
+                multiline
+                ariaLabel="スポットのメモ"
+                onSave={(value) => onSaveNote(spot, value)}
+              />
+            </div>
+          ) : (
             <EditableText
-              value={note}
-              placeholder="メモを書く"
+              value=""
+              placeholder="＋ ここでの思い出をメモする"
               multiline
               ariaLabel="スポットのメモ"
               onSave={(value) => onSaveNote(spot, value)}
             />
-          </div>
-        ) : (
-          <EditableText
-            value=""
-            placeholder="＋ ここでの思い出をメモする"
-            multiline
-            ariaLabel="スポットのメモ"
-            onSave={(value) => onSaveNote(spot, value)}
-          />
-        )}
-      </div>
+          )}
+        </div>
+      ) : (
+        note && <div className="note">{note}</div>
+      )}
     </div>
   );
 }

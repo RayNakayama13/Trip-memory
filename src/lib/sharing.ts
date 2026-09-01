@@ -1,4 +1,4 @@
-import type { Album, Photo } from './types';
+import type { Album, Photo, PhotoMeta } from './types';
 import { getSupabase, ensureSignedIn, makeInviteToken } from './supabase';
 import * as db from './db';
 import { decode, resize } from './image';
@@ -17,7 +17,14 @@ interface PhotoRow {
   width: number;
   height: number;
   storage_path: string;
+  thumb_path: string;
 }
+
+const PHOTO_COLUMNS =
+  'id, album_id, uploader_id, file_name, taken_at, lat, lon, width, height, storage_path, thumb_path';
+
+/** 署名付き URL の有効時間（秒）。見ている間に切れない程度に長めに取る。 */
+const SIGNED_URL_TTL = 60 * 60 * 6;
 
 export interface SyncResult {
   uploaded: number;
@@ -36,14 +43,21 @@ export interface SyncProgress {
 const storagePath = (remoteAlbumId: string, photoId: string): string =>
   `${remoteAlbumId}/${photoId}.jpg`;
 
+/** 一覧用の小さい画像の置き場所。 */
+const thumbPath = (remoteAlbumId: string, photoId: string): string =>
+  `${remoteAlbumId}/${photoId}_t.jpg`;
+
 /**
  * アルバムを共有できる状態にする。
  * サーバーにアルバムを作り、合言葉つきの招待リンクを返す。
  */
-export async function createSharedAlbum(album: Album): Promise<{ remoteId: string; inviteToken: string }> {
+export async function createSharedAlbum(
+  album: Album,
+): Promise<{ remoteId: string; inviteToken: string; viewToken: string }> {
   const supabase = getSupabase();
   const userId = await ensureSignedIn();
   const inviteToken = makeInviteToken();
+  const viewToken = makeInviteToken();
 
   const { data, error } = await supabase
     .from('shared_albums')
@@ -52,6 +66,7 @@ export async function createSharedAlbum(album: Album): Promise<{ remoteId: strin
       note: album.note,
       owner_id: userId,
       invite_token: inviteToken,
+      view_token: viewToken,
     })
     .select('id')
     .single();
@@ -59,13 +74,17 @@ export async function createSharedAlbum(album: Album): Promise<{ remoteId: strin
   if (error || !data) throw new Error(`共有の開始に失敗しました：${error?.message ?? '不明なエラー'}`);
   const remoteId = data.id as string | undefined;
   if (!remoteId) throw new Error('共有の開始に失敗しました：アルバム ID を受け取れませんでした');
-  return { remoteId, inviteToken };
+  return { remoteId, inviteToken, viewToken };
 }
 
 /** 招待リンクの合言葉で参加し、アルバムの情報を受け取る。 */
-export async function joinByToken(
-  token: string,
-): Promise<{ remoteId: string; title: string; note: string; inviteToken: string }> {
+export async function joinByToken(token: string): Promise<{
+  remoteId: string;
+  title: string;
+  note: string;
+  inviteToken: string;
+  viewToken: string | null;
+}> {
   const supabase = getSupabase();
   await ensureSignedIn();
 
@@ -77,7 +96,7 @@ export async function joinByToken(
   const remoteId = joined as string;
   const { data: album, error: readError } = await supabase
     .from('shared_albums')
-    .select('title, note, invite_token')
+    .select('title, note, invite_token, view_token')
     .eq('id', remoteId)
     .single();
   if (readError || !album) throw new Error('アルバムの読み込みに失敗しました。');
@@ -87,6 +106,71 @@ export async function joinByToken(
     title: (album.title as string) ?? '',
     note: (album.note as string) ?? '',
     inviteToken: (album.invite_token as string) ?? token,
+    viewToken: (album.view_token as string) ?? null,
+  };
+}
+
+/** 見るだけのリンクで開いたアルバムの中身。端末には保存しない。 */
+export interface ViewedAlbum {
+  title: string;
+  note: string;
+  photos: PhotoMeta[];
+  /** 写真 ID → 表示用の URL */
+  urls: Map<string, { thumb: string; full: string }>;
+}
+
+/**
+ * 見るだけのリンクからアルバムを読み込む。
+ *
+ * 手元のアルバムには取り込まず、その場で表示するだけなので、画像は
+ * 期限付きの URL を受け取って <img> から直接読む。
+ */
+export async function loadAlbumForViewing(viewToken: string): Promise<ViewedAlbum> {
+  const supabase = getSupabase();
+  await ensureSignedIn();
+
+  const { data: albumId, error: joinError } = await supabase.rpc('view_album', { token: viewToken });
+  if (joinError || !albumId) {
+    throw new Error('この共有リンクは使えませんでした。リンクが正しいか確認してください。');
+  }
+
+  const [{ data: album, error: albumError }, { data: rows, error: rowsError }] = await Promise.all([
+    supabase.from('shared_albums').select('title, note').eq('id', albumId).single(),
+    supabase.from('shared_photos').select(PHOTO_COLUMNS).eq('album_id', albumId),
+  ]);
+  if (albumError || !album) throw new Error('アルバムの読み込みに失敗しました。');
+  if (rowsError) throw new Error(`写真の読み込みに失敗しました：${rowsError.message}`);
+
+  const photoRows = (rows ?? []) as PhotoRow[];
+  const paths = photoRows.flatMap((r) => [r.storage_path, r.thumb_path].filter(Boolean));
+  const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrls(paths, SIGNED_URL_TTL);
+  const byPath = new Map((signed ?? []).map((entry) => [entry.path ?? '', entry.signedUrl]));
+
+  const urls = new Map<string, { thumb: string; full: string }>();
+  for (const row of photoRows) {
+    const full = byPath.get(row.storage_path) ?? '';
+    // サムネイルが無い写真（古い共有）は、表示用の画像で代用する
+    urls.set(row.id, { full, thumb: byPath.get(row.thumb_path) ?? full });
+  }
+
+  const photos: PhotoMeta[] = photoRows
+    .map((row) => ({
+      id: row.id,
+      fileName: row.file_name || `${row.id}.jpg`,
+      takenAt: row.taken_at ? new Date(row.taken_at).getTime() : null,
+      takenAtSource: (row.taken_at ? 'exif' : 'none') as PhotoMeta['takenAtSource'],
+      lat: row.lat,
+      lon: row.lon,
+      width: row.width,
+      height: row.height,
+    }))
+    .sort((a, b) => (a.takenAt ?? 0) - (b.takenAt ?? 0));
+
+  return {
+    title: (album.title as string) ?? '',
+    note: (album.note as string) ?? '',
+    photos,
+    urls,
   };
 }
 
@@ -118,7 +202,7 @@ export async function syncAlbum(
 
   const { data: rows, error: rowsError } = await supabase
     .from('shared_photos')
-    .select('id, album_id, uploader_id, file_name, taken_at, lat, lon, width, height, storage_path')
+    .select(PHOTO_COLUMNS)
     .eq('album_id', remoteId);
   if (rowsError) throw new Error(`写真の一覧を取得できませんでした：${rowsError.message}`);
 
@@ -132,10 +216,17 @@ export async function syncAlbum(
   for (const photo of toUpload) {
     onProgress?.({ phase: 'upload', done: uploaded, total: toUpload.length });
     const path = storagePath(remoteId, photo.id);
+    const thumb = thumbPath(remoteId, photo.id);
     const { error: uploadError } = await supabase.storage
       .from(BUCKET)
       .upload(path, photo.full, { contentType: 'image/jpeg', upsert: true });
     if (uploadError) throw new Error(`写真の送信に失敗しました：${uploadError.message}`);
+
+    // 見るだけの人が一覧で大きい画像を読まずに済むよう、小さい画像も置く
+    const { error: thumbError } = await supabase.storage
+      .from(BUCKET)
+      .upload(thumb, photo.thumb, { contentType: 'image/jpeg', upsert: true });
+    if (thumbError) throw new Error(`写真の送信に失敗しました：${thumbError.message}`);
 
     const { error: insertError } = await supabase.from('shared_photos').upsert({
       id: photo.id,
@@ -148,6 +239,7 @@ export async function syncAlbum(
       width: photo.width,
       height: photo.height,
       storage_path: path,
+      thumb_path: thumb,
     });
     if (insertError) throw new Error(`写真の登録に失敗しました：${insertError.message}`);
 
@@ -231,9 +323,11 @@ export async function stopSharing(album: Album): Promise<void> {
     // 写真ファイルはアルバムを消しても残るため、先に消す
     const { data: rows } = await supabase
       .from('shared_photos')
-      .select('storage_path')
+      .select('storage_path, thumb_path')
       .eq('album_id', album.remoteId);
-    const paths = (rows ?? []).map((r) => r.storage_path as string);
+    const paths = (rows ?? []).flatMap((r) =>
+      [r.storage_path as string, r.thumb_path as string].filter(Boolean),
+    );
     if (paths.length > 0) await supabase.storage.from(BUCKET).remove(paths);
     await supabase.from('shared_albums').delete().eq('id', album.remoteId);
   } else {

@@ -60,8 +60,10 @@ interface LibraryState {
   /** 招待リンクの合言葉で参加し、手元のアルバム ID を返す */
   joinAlbum: (token: string) => Promise<string>;
   stopSharing: (albumId: string) => Promise<void>;
-  /** 招待リンクの URL を組み立てる */
+  /** 一緒に写真を足せるリンクの URL */
   inviteLink: (album: Album) => string;
+  /** 見るだけのリンクの URL */
+  viewLink: (album: Album) => string;
 }
 
 const LibraryContext = createContext<LibraryState | null>(null);
@@ -70,10 +72,20 @@ function newId(): string {
   return `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** 招待リンクの URL。ハッシュに合言葉を載せるので、サーバーに残らない。 */
-export function inviteLink(album: Album): string {
+/** リンクの URL。ハッシュに合言葉を載せるので、開いた先のサーバーには残らない。 */
+function linkTo(path: string): string {
   const base = `${window.location.origin}${window.location.pathname}`;
-  return `${base}#/join/${album.inviteToken ?? ''}`;
+  return `${base}#${path}`;
+}
+
+/** 一緒に写真を足せるリンク。 */
+export function inviteLink(album: Album): string {
+  return linkTo(`/join/${album.inviteToken ?? ''}`);
+}
+
+/** 見るだけのリンク。 */
+export function viewLink(album: Album): string {
+  return linkTo(`/view/${album.viewToken ?? ''}`);
 }
 
 function makeAlbum(title = ''): Album {
@@ -279,11 +291,11 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
     async (albumId: string) => {
       const album = albums.find((a) => a.id === albumId);
       if (!album) throw new Error('アルバムが見つかりません');
-      const { remoteId, inviteToken } = await sharing.createSharedAlbum(album);
-      const shared: Album = { ...album, remoteId, inviteToken, shareRole: 'owner' };
+      const { remoteId, inviteToken, viewToken } = await sharing.createSharedAlbum(album);
+      const shared: Album = { ...album, remoteId, inviteToken, viewToken, shareRole: 'owner' };
       await persistAlbum(shared);
       await runSync(shared);
-      return inviteLink(shared);
+      return viewLink(shared);
     },
     [albums, persistAlbum, runSync],
   );
@@ -311,6 +323,7 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
         note: joined.note,
         remoteId: joined.remoteId,
         inviteToken: joined.inviteToken,
+        viewToken: joined.viewToken,
         shareRole: 'member',
       };
       await db.putAlbum(album);
@@ -330,6 +343,7 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
         ...album,
         remoteId: null,
         inviteToken: null,
+        viewToken: null,
         shareRole: null,
         lastSyncedAt: null,
         memberCount: null,
@@ -431,6 +445,7 @@ export function LibraryProvider({ children }: { children: ReactNode }): JSX.Elem
     joinAlbum,
     stopSharing,
     inviteLink,
+    viewLink,
   };
 
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;

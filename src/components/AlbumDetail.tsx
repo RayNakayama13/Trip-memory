@@ -8,6 +8,7 @@ import { MapView } from './MapView';
 import { Timeline } from './Timeline';
 import { Lightbox } from './Lightbox';
 import { Uploader } from './Uploader';
+import { photoUrl, type UrlResolver } from '../lib/media';
 import { AlbumPicker } from './AlbumPicker';
 import { SharePanel } from './SharePanel';
 
@@ -45,6 +46,15 @@ export function AlbumDetail({ view, onBack }: Props): JSX.Element {
   const photos = useMemo(
     () => view.photoIds.map((id) => photoById.get(id)).filter((p): p is Photo => p !== undefined),
     [view.photoIds, photoById],
+  );
+
+  // 表示側は「写真 → URL」の求め方だけを受け取る。共有リンクからの閲覧では別の求め方を渡す。
+  const urlOf = useCallback<UrlResolver>(
+    (photo, size) => {
+      const stored = photoById.get(photo.id);
+      return stored ? photoUrl(stored, size) : '';
+    },
+    [photoById],
   );
 
   const spotTitle = useCallback(
@@ -187,6 +197,7 @@ export function AlbumDetail({ view, onBack }: Props): JSX.Element {
           <MapView
             spots={view.spots}
             photoById={photoById}
+            urlOf={urlOf}
             titleOf={spotTitle}
             activeSpotId={active?.id ?? null}
             activeSource={active?.source ?? null}
@@ -201,6 +212,7 @@ export function AlbumDetail({ view, onBack }: Props): JSX.Element {
           <Timeline
             view={view}
             photoById={photoById}
+            urlOf={urlOf}
             spotTitle={spotTitle}
             noteOf={(key) => spotNoteOf(key.replace(/^spot:/, ''))}
             onSaveTitle={(spot, value) => void saveSpotEdit(spot.id, { title: value })}
@@ -236,6 +248,7 @@ export function AlbumDetail({ view, onBack }: Props): JSX.Element {
       {lightboxIndex !== null && photos.length > 0 && (
         <Lightbox
           photos={photos}
+          urlOf={urlOf}
           index={Math.min(lightboxIndex, photos.length - 1)}
           onIndexChange={setLightboxIndex}
           onClose={() => setLightboxIndex(null)}

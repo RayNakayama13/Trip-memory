@@ -1,4 +1,7 @@
-import type { Photo } from './types';
+import type { Photo, PhotoMeta } from './types';
+
+/** 写真から表示用の URL を求める関数。手元の画像でも共有リンク越しでも使えるようにする。 */
+export type UrlResolver = (photo: PhotoMeta, size: 'thumb' | 'full') => string;
 
 /** Blob URL は作りっぱなしにするとメモリを圧迫するので、写真 ID ごとに使い回す。 */
 const cache = new Map<string, string>();

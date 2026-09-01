@@ -15,26 +15,34 @@ export interface Place {
   type?: string;
 }
 
-export interface Photo {
+/**
+ * 表示に必要な写真の情報。
+ * 手元に画像を持つ写真（Photo）と、共有リンクから見るだけの写真の両方で使う。
+ */
+export interface PhotoMeta {
   id: string;
   fileName: string;
-  /** 所属するアルバムの ID。どこにも入っていない写真は null（＝未整理） */
-  albumId: string | null;
   /** 撮影日時（EXIF。無ければファイルの更新日時、それも無ければ null） */
   takenAt: number | null;
   /** 撮影日時をどこから得たか */
   takenAtSource: 'exif' | 'file' | 'none';
   lat: number | null;
   lon: number | null;
-  /** 撮影方角（EXIF GPSImgDirection） */
-  heading: number | null;
   width: number;
   height: number;
+  cameraModel?: string;
+}
+
+/** 端末に画像を保存している写真。 */
+export interface Photo extends PhotoMeta {
+  /** 所属するアルバムの ID。どこにも入っていない写真は null（＝未整理） */
+  albumId: string | null;
+  /** 撮影方角（EXIF GPSImgDirection） */
+  heading: number | null;
   /** 表示用に長辺 1600px へ縮小した画像 */
   full: Blob;
   /** 一覧用のサムネイル（長辺 400px） */
   thumb: Blob;
-  cameraModel?: string;
   createdAt: number;
   /** 共有アルバムの場合、この写真がサーバーに上がっているか */
   uploaded?: boolean;
@@ -54,8 +62,10 @@ export interface Album {
   /* --- 共有しているアルバムだけが持つ情報 --- */
   /** サーバー側のアルバム ID。null なら共有していない（この端末だけのアルバム） */
   remoteId?: string | null;
-  /** 招待リンクに載せる合言葉 */
+  /** 一緒に写真を足せるリンクの合言葉 */
   inviteToken?: string | null;
+  /** 見るだけのリンクの合言葉 */
+  viewToken?: string | null;
   /** 自分が作ったのか、招待されて参加したのか */
   shareRole?: 'owner' | 'member' | null;
   lastSyncedAt?: number | null;

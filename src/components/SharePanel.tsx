@@ -5,15 +5,16 @@ import { formatDateTime } from '../lib/format';
 
 /** アルバムを他の人と共有するための操作をまとめたパネル。 */
 export function SharePanel({ album }: { album: Album }): JSX.Element {
-  const { sharingConfigured, syncing, shareAlbum, syncAlbum, stopSharing, inviteLink } = useLibrary();
+  const { sharingConfigured, syncing, shareAlbum, syncAlbum, stopSharing, inviteLink, viewLink } =
+    useLibrary();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [confirmingStop, setConfirmingStop] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'view' | 'invite' | null>(null);
+  const [showInvite, setShowInvite] = useState(false);
 
   const shared = Boolean(album.remoteId);
-  const link = shared ? inviteLink(album) : '';
   const progress = syncing?.albumId === album.id ? syncing.progress : null;
 
   const run = async (task: () => Promise<void>): Promise<void> => {
@@ -29,24 +30,24 @@ export function SharePanel({ album }: { album: Album }): JSX.Element {
     }
   };
 
-  const copyLink = async (): Promise<void> => {
+  const copyLink = async (kind: 'view' | 'invite', link: string): Promise<void> => {
     try {
       await navigator.clipboard.writeText(link);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      setCopied(kind);
+      window.setTimeout(() => setCopied(null), 2000);
     } catch {
-      // クリップボードが使えない環境では、下の入力欄から手で選んでもらう
-      setError('自動でコピーできませんでした。下のリンクを選んでコピーしてください。');
+      // クリップボードが使えない環境では、入力欄から手で選んでもらう
+      setError('自動でコピーできませんでした。リンクを選んでコピーしてください。');
     }
   };
 
   if (!sharingConfigured) {
     return (
       <div className="share share--off">
-        <span className="share__title">みんなで作る</span>
+        <span className="share__title">共有する</span>
         <p className="faint">
-          共有機能はまだ設定されていません。README の「共有アルバムを使えるようにする」の手順で
-          Supabase をつなぐと、他の人も同じアルバムに写真を追加できるようになります。
+          共有機能はまだ設定されていません。README の「共有アルバム」の手順で Supabase を
+          つなぐと、リンクを渡すだけで他の人にアルバムを見てもらえるようになります。
         </p>
       </div>
     );
@@ -55,33 +56,80 @@ export function SharePanel({ album }: { album: Album }): JSX.Element {
   return (
     <div className="share">
       <div className="share__head">
-        <span className="share__title">みんなで作る</span>
+        <span className="share__title">共有する</span>
         {shared && (
-          <span className="tag">
-            共有中{album.shareRole === 'member' ? '（参加）' : ''}
-          </span>
+          <span className="tag">共有中{album.shareRole === 'member' ? '（参加）' : ''}</span>
         )}
       </div>
 
       {shared ? (
         <>
           <p className="faint">
-            このリンクを渡した人だけが、このアルバムを見て写真を追加できます。
-            {album.memberCount ? ` 現在 ${album.memberCount} 人が参加中。` : ''}
-            {album.lastSyncedAt ? ` 最終同期 ${formatDateTime(album.lastSyncedAt)}。` : ''}
+            リンクを渡した人だけがこのアルバムを開けます。
+            {album.memberCount ? ` これまでに ${album.memberCount} 人が開きました。` : ''}
+            {album.lastSyncedAt ? ` 最終更新 ${formatDateTime(album.lastSyncedAt)}。` : ''}
           </p>
 
-          <div className="share__link">
-            <input className="input" readOnly value={link} onFocus={(e) => e.target.select()} />
-            <button type="button" className="btn" onClick={() => void copyLink()}>
-              {copied ? 'コピーしました' : 'リンクをコピー'}
-            </button>
+          <div className="share__group">
+            <span className="share__label">見てもらうリンク</span>
+            <p className="faint">
+              渡した人はアルバムを見るだけで、写真の追加や書き換えはできません。
+              相手にアプリや登録は要りません。
+            </p>
+            <div className="share__link">
+              <input
+                className="input"
+                readOnly
+                value={viewLink(album)}
+                onFocus={(e) => e.target.select()}
+              />
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => void copyLink('view', viewLink(album))}
+              >
+                {copied === 'view' ? 'コピーしました' : 'リンクをコピー'}
+              </button>
+            </div>
           </div>
+
+          {showInvite ? (
+            <div className="share__group">
+              <span className="share__label">一緒に写真を足せるリンク</span>
+              <p className="faint">
+                渡した人もこのアルバムに写真を追加できます。渡す相手にご注意ください。
+              </p>
+              <div className="share__link">
+                <input
+                  className="input"
+                  readOnly
+                  value={inviteLink(album)}
+                  onFocus={(e) => e.target.select()}
+                />
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => void copyLink('invite', inviteLink(album))}
+                >
+                  {copied === 'invite' ? 'コピーしました' : 'リンクをコピー'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              style={{ justifySelf: 'start' }}
+              onClick={() => setShowInvite(true)}
+            >
+              一緒に写真を足せるリンクも使う
+            </button>
+          )}
 
           <div className="share__actions">
             <button
               type="button"
-              className="btn btn--primary"
+              className="btn"
               disabled={busy || progress !== null}
               onClick={() => void run(async () => {
                 const result = await syncAlbum(album.id);
@@ -145,17 +193,17 @@ export function SharePanel({ album }: { album: Album }): JSX.Element {
       ) : (
         <>
           <p className="faint">
-            共有すると、このアルバムの写真がサーバーに保存され、リンクを知っている人が
-            写真を追加できるようになります。共有していないアルバムは、これまでどおり
-            この端末から出ません。
+            共有すると、このアルバムの写真がサーバーに保存され、リンクを渡した人が
+            見られるようになります（相手はアプリも登録も不要です）。共有していない
+            アルバムは、これまでどおりこの端末から出ません。
           </p>
           <button
             type="button"
             className="btn btn--primary"
             disabled={busy || progress !== null}
             onClick={() => void run(async () => {
-              const created = await shareAlbum(album.id);
-              setMessage(`共有を開始しました。リンク：${created}`);
+              await shareAlbum(album.id);
+              setMessage('共有を始めました。下のリンクを渡してください。');
             })}
           >
             {progress ? `写真を送信中 ${progress.done}/${progress.total}` : 'このアルバムを共有する'}

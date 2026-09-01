@@ -4,6 +4,7 @@ import { AlbumList } from './components/AlbumList';
 import { AlbumDetail } from './components/AlbumDetail';
 import { SettingsPanel } from './components/SettingsPanel';
 import { JoinScreen } from './components/JoinScreen';
+import { SharedAlbumView } from './components/SharedAlbumView';
 
 /** ブラウザの戻る/進むが効くように、画面の状態は URL のハッシュで持つ。 */
 function useHashRoute(): [string, (route: string) => void] {
@@ -28,6 +29,7 @@ function Shell(): JSX.Element {
   const [route, navigate] = useHashRoute();
 
   const joinToken = route.startsWith('/join/') ? route.slice('/join/'.length) : null;
+  const viewToken = route.startsWith('/view/') ? route.slice('/view/'.length) : null;
   const albumId = route.startsWith('/album/') ? route.slice('/album/'.length) : null;
   const view = albumId ? albumViews.find((v) => v.album.id === albumId) : null;
 
@@ -67,6 +69,8 @@ function Shell(): JSX.Element {
             <div className="empty__emoji">🧳</div>
             読み込んでいます…
           </div>
+        ) : viewToken ? (
+          <SharedAlbumView token={viewToken} onExit={() => navigate('/')} />
         ) : joinToken ? (
           <JoinScreen
             token={joinToken}

@@ -1,22 +1,24 @@
 import { useCallback, useEffect, useRef } from 'react';
-import type { Photo } from '../lib/types';
-import { photoUrl } from '../lib/media';
+import type { PhotoMeta } from '../lib/types';
+import type { UrlResolver } from '../lib/media';
 import { formatDateTime } from '../lib/format';
 
 interface Props {
-  photos: Photo[];
+  photos: PhotoMeta[];
+  urlOf: UrlResolver;
   index: number;
   onIndexChange: (index: number) => void;
   onClose: () => void;
-  onDelete: (photoId: string) => void;
-  /** この写真を別のアルバムへ移す */
-  onMove: (photoId: string) => void;
+  /** 手元のアルバムを見ているときだけ渡す。共有リンクからの閲覧では省略する。 */
+  onDelete?: (photoId: string) => void;
+  onMove?: (photoId: string) => void;
   caption?: string;
 }
 
 /** 写真を大きく見るためのオーバーレイ。左右キーで移動、Esc で閉じる。 */
 export function Lightbox({
   photos,
+  urlOf,
   index,
   onIndexChange,
   onClose,
@@ -66,21 +68,25 @@ export function Lightbox({
           {index + 1} / {photos.length}
         </span>
         <span style={{ flex: 1 }} />
-        <button type="button" className="btn btn--ghost" onClick={() => onMove(photo.id)}>
-          アルバムを移す
-        </button>
-        <button
-          type="button"
-          className="btn btn--danger"
-          onClick={() => {
-            if (window.confirm(`「${photo.fileName}」を削除しますか？`)) {
-              onDelete(photo.id);
-              if (index >= photos.length - 1) onClose();
-            }
-          }}
-        >
-          削除
-        </button>
+        {onMove && (
+          <button type="button" className="btn btn--ghost" onClick={() => onMove(photo.id)}>
+            アルバムを移す
+          </button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            className="btn btn--danger"
+            onClick={() => {
+              if (window.confirm(`「${photo.fileName}」を削除しますか？`)) {
+                onDelete(photo.id);
+                if (index >= photos.length - 1) onClose();
+              }
+            }}
+          >
+            削除
+          </button>
+        )}
       </div>
 
       <div
@@ -100,7 +106,7 @@ export function Lightbox({
           if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) move(dx < 0 ? 1 : -1);
         }}
       >
-        <img src={photoUrl(photo, 'full')} alt={photo.fileName} />
+        <img src={urlOf(photo, 'full')} alt={photo.fileName} />
         {index > 0 && (
           <button
             type="button"

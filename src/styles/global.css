@@ -535,6 +535,20 @@ img {
   font-size: 15px;
 }
 
+.share__group {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.share__label {
+  font-weight: 700;
+  font-size: 14px;
+}
+
 .share__link {
   display: flex;
   gap: 8px;

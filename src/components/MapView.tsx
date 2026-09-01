@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { Photo, Spot } from '../lib/types';
-import { photoUrl } from '../lib/media';
+import type { PhotoMeta, Spot } from '../lib/types';
+import type { UrlResolver } from '../lib/media';
 import { formatTime } from '../lib/format';
 
 interface Props {
   spots: Spot[];
-  photoById: Map<string, Photo>;
+  photoById: Map<string, PhotoMeta>;
+  urlOf: UrlResolver;
   titleOf: (spot: Spot, index: number) => string;
   activeSpotId: string | null;
   /** どこから選ばれたか。時系列側から選ばれたときだけ地図を動かす。 */
@@ -19,6 +20,7 @@ interface Props {
 export function MapView({
   spots,
   photoById,
+  urlOf,
   titleOf,
   activeSpotId,
   activeSource,
@@ -116,7 +118,7 @@ export function MapView({
       const time = spot.startAt ? formatTime(spot.startAt) : '';
       marker.bindPopup(
         `<div>
-          ${cover ? `<img class="map-popup__thumb" src="${photoUrl(cover, 'thumb')}" alt="">` : ''}
+          ${cover ? `<img class="map-popup__thumb" src="${urlOf(cover, 'thumb')}" alt="">` : ''}
           <div><strong>${escapeHtml(titleOf(spot, index))}</strong></div>
           <div style="color:#9aa3b5">${time}${time ? ' ・ ' : ''}${spot.photoIds.length} 枚</div>
         </div>`,
@@ -130,7 +132,7 @@ export function MapView({
       map.fitBounds(L.latLngBounds(path), { padding: [40, 40], maxZoom: 15 });
       fittedRef.current = boundsKey;
     }
-  }, [located, spots, photoById, titleOf, boundsKey]);
+  }, [located, spots, photoById, urlOf, titleOf, boundsKey]);
 
   // 選択中のスポットを強調し、地図の中心へ寄せる
   useEffect(() => {
